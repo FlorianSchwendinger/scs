@@ -1,5 +1,18 @@
 # R interface to the [Splitting Conic Solver (SCS)](https://github.com/cvxgrp/scs)
 
+## Control Arguments
+| Parameter   | Type    |             Description                                             | Default Value |
+|:------------|:--------|:--------------------------------------------------------------------|:-------------:|
+| `max_iters` | integer | giving the maximum number of iterations                             |   `5000`      |
+| `normalize` | boolean | heuristic data rescaling                                            |   `TRUE`      |
+| `verbose`   | boolean | write out progress                                                  |   `FALSE`     |
+| `cg_rate`   | numeric | for indirect, tolerance goes down like $\frac{1}{iter}^{cg\_rate}$  |      `2`      |
+| `scale`     | numeric | if normalized, rescales by this factor                              |      `1`      |
+| `rho_x`     | numeric | x equality constraint scaling                                       |   `1e-3`      |
+| `alpha`     | numeric | relaxation parameter                                                |    `1.5`      |
+| `eps`       | numeric | convergence tolerance                                               |   `1e-6`      |
+
+
 ## Reference
 * O'Donoghue Brendan, Chu Eric, Parikh Neal, Boyd Stephen (2016).
   Operator Splitting for Conic Optimization via Homogeneous Self-Dual Embedding.
