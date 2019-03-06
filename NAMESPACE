@@ -1,2 +1,2 @@
-useDynLib(scs)
-export(scs, scs_control)
+useDynLib("scs", .registration = TRUE)
+export("scs", "scs_control")
