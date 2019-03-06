@@ -3,10 +3,10 @@
 ## Control Arguments
 | Parameter   | Type    |             Description                                             | Default Value |
 |:------------|:--------|:--------------------------------------------------------------------|:-------------:|
-| `max_iters` | integer | giving the maximum number of iterations                             |   `5000`      |
-| `normalize` | boolean | heuristic data rescaling                                            |   `TRUE`      |
+| `max_iters` | integer | maximum number of iterations                                        |   `5000`      |
+| `normalize` | boolean | turn heuristic data rescaling on and off                            |   `TRUE`      |
 | `verbose`   | boolean | write out progress                                                  |   `FALSE`     |
-| `cg_rate`   | numeric | for indirect, tolerance goes down like $\frac{1}{iter}^{cg\_rate}$  |      `2`      |
+| `cg_rate`   | numeric | for indirect, tolerance goes down like `(1 / iter)^cg_rate`           |      `2`      |
 | `scale`     | numeric | if normalized, rescales by this factor                              |      `1`      |
 | `rho_x`     | numeric | x equality constraint scaling                                       |   `1e-3`      |
 | `alpha`     | numeric | relaxation parameter                                                |    `1.5`      |
