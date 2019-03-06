@@ -1,0 +1,4 @@
+#!/bin/bash
+rm -f src/scs.so src/scsr.o src/symbols.rds
+
+

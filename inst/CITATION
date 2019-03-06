@@ -1,0 +1,25 @@
+citHeader("To cite scs in publications use:")
+
+citEntry(entry = "Article",
+  title        = "Operator Splitting for Conic Optimization via Homogeneous Self-Dual Embedding",
+  author       = personList(as.person("O'Donoghue Brendan"),
+                            as.person("Chu Eric"),
+                            as.person("Parikh Neal"),
+                            as.person("Boyd Stephen")),
+  journal      = "Journal of Optimization Theory and Applications",
+  year         = "2016",
+  month        = "Jun",
+  day          = "01",
+  volume       = "169",
+  number       = "3",
+  pages        = "1042--1068",
+  doi          = "10.1007/s10957-016-0892-3",
+  url          = "https://doi.org/10.1007/s10957-016-0892-3",
+
+  textVersion  =
+  paste("O'Donoghue Brendan, Chu Eric, Parikh Neal, Boyd Stephen (2016).",
+        "Operator Splitting for Conic Optimization via Homogeneous Self-Dual Embedding.",
+		"Journal of Optimization Theory and Applications 169(3), 1042-1068.",
+        "URL https://doi.org/10.1007/s10957-016-0892-3.")
+)
+

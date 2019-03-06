@@ -1,0 +1,5 @@
+PKG_CFLAGS=-Iscs/include -Iscs/linsys -Iscs/linsys/direct -Iscs/linsys/direct/external -DUSE_LAPACK -DCOPYAMATRIX -DUSING_R
+PKG_LIBS=$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+
+OBJECTS=scs/src/accel.o scs/src/cones.o scs/src/cs.o scs/src/ctrlc.o scs/src/linalg.o scs/src/normalize.o scs/src/scs.o scs/src/scs_version.o scs/src/util.o scs/linsys/common.o scs/linsys/direct/private.o scs/linsys/direct/external/ldl.o scs/linsys/direct/external/amd_1.o scs/linsys/direct/external/amd_2.o scs/linsys/direct/external/amd_aat.o scs/linsys/direct/external/amd_control.o scs/linsys/direct/external/amd_defaults.o scs/linsys/direct/external/amd_dump.o scs/linsys/direct/external/amd_global.o scs/linsys/direct/external/amd_info.o scs/linsys/direct/external/amd_order.o scs/linsys/direct/external/amd_postorder.o scs/linsys/direct/external/amd_post_tree.o scs/linsys/direct/external/amd_preprocess.o scs/linsys/direct/external/amd_valid.o scsr.o
+
