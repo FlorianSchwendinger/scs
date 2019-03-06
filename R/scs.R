@@ -90,10 +90,10 @@ scs <- function(A, b, obj, cone, control = scs_control()) {
 #' @param scale a double giving the factor (default is \code{1.0}) by which the data is rescaled (only used if normalize is \code{TRUE}).
 #' @param rho_x a double giving the momentum of x term (default os \code{1e-3}).
 #' @param alpha a double giving the over-relaxation parameter, allowed values are in (0, 2) (default if \code{1.5}).
-#' @param eps a double giving the convergence tolerance (default is \code{1e-6}).
+#' @param eps a double giving the convergence tolerance (default is \code{1e-5}).
 #' @return a list containing the control parameters.
 scs_control <- function(max_iters = 5000L, normalize = TRUE, verbose = FALSE,
-                cg_rate = 2.0, scale = 1.0, rho_x = 1e-03, alpha = 1.5, eps = 1e-6) {
+                cg_rate = 2.0, scale = 1.0, rho_x = 1e-03, alpha = 1.5, eps = 1e-5) {
     as.list(environment())
 }
 
