@@ -1,5 +1,25 @@
-PKG_CFLAGS=-Iscs/include -Iscs/linsys -Iscs/linsys/direct -Iscs/linsys/direct/external -DUSE_LAPACK -DCOPYAMATRIX -DUSING_R
-PKG_LIBS=$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+SCS_DIR=scs
+SCS_MODS_DIR=scs_mods
 
-OBJECTS=scs/src/accel.o scs/src/cones.o scs/src/cs.o scs/src/ctrlc.o scs/src/linalg.o scs/src/normalize.o scs/src/scs.o scs/src/scs_version.o scs/src/util.o scs/linsys/common.o scs/linsys/direct/private.o scs/linsys/direct/external/ldl.o scs/linsys/direct/external/amd_1.o scs/linsys/direct/external/amd_2.o scs/linsys/direct/external/amd_aat.o scs/linsys/direct/external/amd_control.o scs/linsys/direct/external/amd_defaults.o scs/linsys/direct/external/amd_dump.o scs/linsys/direct/external/amd_global.o scs/linsys/direct/external/amd_info.o scs/linsys/direct/external/amd_order.o scs/linsys/direct/external/amd_postorder.o scs/linsys/direct/external/amd_post_tree.o scs/linsys/direct/external/amd_preprocess.o scs/linsys/direct/external/amd_valid.o scsr.o
+SOLARIS=$(shell $(R_HOME)/bin/Rscript -e 'cat(grepl("SunOS", Sys.info()["sysname"]))')
+ifeq ($(SOLARIS),TRUE)
+   SOLARIS_FLAG=-DSOLARIS
+else
+   SOLARIS_FLAG=-USOLARIS
+endif
+
+PKG_CFLAGS=$(SOLARIS_FLAG) -I./$(SCS_DIR)/include -DUSE_LAPACK -DCOPYAMATRIX -DUSING_R
+PKG_LIBS=-L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+
+$(SHLIB): init.o scsr.o
+
+scsr.o: scs.ts
+
+scs.ts:
+	(cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR) && \
+	cp -f $(SCS_MODS_DIR)/glbopts.h $(SCS_DIR)/include && \
+	(cd $(SCS_DIR) && \
+	($(MAKE) purge && \
+	$(MAKE) out/libscsdir.a CC="$(CC)" CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS) $(SOLARIS_FLAG)" AR="$(AR)" RANLIB="$(RANLIB)")) && \
+	touch $@)
 
