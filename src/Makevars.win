@@ -1,0 +1,15 @@
+SCS_DIR=scs
+SCS_MODS_DIR=scs_mods
+
+PKG_CFLAGS=-I./$(SCS_DIR)/include -DUSE_LAPACK -DCOPYAMATRIX -DUSING_R
+PKG_LIBS=-L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+
+$(SHLIB): init.o scsr.o
+
+scsr.o: scsr.ts
+
+scsr.ts:
+	cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR)
+	cp -f $(SCS_MODS_DIR)/glbopts.h $(SCS_DIR)/include && \
+	cd $(SCS_DIR) && CC="$(CC)" CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS)" AR="$(AR)" RANLIB="$(RANLIB)" $(MAKE) out/libscsdir.a
+	touch $@

@@ -7,9 +7,9 @@
 scs(A, b, obj, cone, control = scs_control())
 }
 \arguments{
-\item{A}{a matrix of constraint coefficients. 
-\bold{NOTE:} The rows of matrix A have to be ordered according to the 
-order given in subsection \dQuote{Allowed cone parameters}.}
+\item{A}{a matrix of constraint coefficients.
+\bold{NOTE:} The rows of matrix A have to be ordered according to the
+order given in subsection \dQuote{Allowed cone parameters}. For more information see \bold{README}.}
 
 \item{b}{a numeric vector giving the primal constraints}
 
@@ -17,7 +17,7 @@ order given in subsection \dQuote{Allowed cone parameters}.}
 
 \item{cone}{a list giving the cone sizes}
 
-\item{control}{a list giving the control parameters.}
+\item{control}{a list giving the control parameters. For more information see \bold{README}.}
 }
 \value{
 list of solution vectors x, y, s and information about run
@@ -27,10 +27,10 @@ Solves convex cone programs via operator splitting.
 }
 \details{
 \subsection{Important Note}{ \cr
-The order of the rows in matrix \eqn{A} has to correspond to the order given in 
-the table \dQuote{Cone Arguments}, which means means rows corresponding to 
-\emph{primal zero cones} should be first, rows corresponding to \emph{non-negative cones} second, 
-rows corresponding to \emph{second-order cone} third, rows corresponding to \emph{positive semidefinite cones} fourth, 
+The order of the rows in matrix \eqn{A} has to correspond to the order given in
+the table \dQuote{Cone Arguments}, which means means rows corresponding to
+\emph{primal zero cones} should be first, rows corresponding to \emph{non-negative cones} second,
+rows corresponding to \emph{second-order cone} third, rows corresponding to \emph{positive semidefinite cones} fourth,
 rows corresponding to \emph{exponential cones} fifth and rows corresponding to \emph{power cones} at last.
 }
 
@@ -45,7 +45,7 @@ rows corresponding to \emph{exponential cones} fifth and rows corresponding to \
 } }
 
 \subsection{Allowed \emph{cone} parameters are}{
-\tabular{rllll}{ 
+\tabular{rllll}{
    \tab \bold{Parameter} \tab \bold{Type} \tab \bold{Length} \tab \bold{Description}                       \cr
    \tab \code{f}         \tab integer     \tab \eqn{1}       \tab number of primal zero cones (dual free cones),       \cr
    \tab                  \tab             \tab               \tab which corresponds to the primal equality constraints \cr
@@ -54,7 +54,7 @@ rows corresponding to \emph{exponential cones} fifth and rows corresponding to \
    \tab \code{s}         \tab integer     \tab \eqn{\geq1}   \tab vector of positive semidefinite cone sizes           \cr
    \tab \code{ep}        \tab integer     \tab \eqn{1}       \tab number of primal exponential cones                   \cr
    \tab \code{ed}        \tab integer     \tab \eqn{1}       \tab number of dual exponential cones                     \cr
-   \tab \code{p}         \tab numeric     \tab \eqn{\geq1}   \tab vector of primal/dual power cone parameters          
+   \tab \code{p}         \tab numeric     \tab \eqn{\geq1}   \tab vector of primal/dual power cone parameters
 } }
 }
 \examples{
@@ -63,6 +63,6 @@ b <- c(1, 1)
 obj <- 1
 cone <- list(f = 2)
 control <- list(eps = 1e-3, max_iters = 50)
-sol <- scs(A, b, obj, cone, control) 
+sol <- scs(A, b, obj, cone, control)
 sol
 }

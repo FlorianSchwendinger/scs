@@ -1,6 +1,5 @@
 .gitignore
 .Rhistory
-Makefile
 README.html
 src/build_makevars.R
 src/Makevars_unix
@@ -14,8 +13,6 @@ src/scs/python
 src/scs/r
 src/scs/README.md
 src/scs/.bumpversion.cfg
-src/scs/Makefile
-src/scs/scs.mk
 src/scs/.git
 src/scs/.gitignore
 src/scs/.TODO

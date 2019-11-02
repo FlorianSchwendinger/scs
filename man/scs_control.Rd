@@ -6,7 +6,7 @@
 \usage{
 scs_control(max_iters = 5000L, normalize = TRUE, verbose = FALSE,
   cg_rate = 2, scale = 1, rho_x = 0.001, alpha = 1.5,
-  eps = 1e-05)
+  eps = 1e-05, acceleration_lookback = 20L)
 }
 \arguments{
 \item{max_iters}{an integer giving the maximum number of iterations (default is \code{5000L}).}
@@ -24,6 +24,8 @@ scs_control(max_iters = 5000L, normalize = TRUE, verbose = FALSE,
 \item{alpha}{a double giving the over-relaxation parameter, allowed values are in (0, 2) (default if \code{1.5}).}
 
 \item{eps}{a double giving the convergence tolerance (default is \code{1e-5}).}
+
+\item{acceleration_lookback}{an integer indicating the number of iterations to look back for Anderson acceleration}
 }
 \value{
 a list containing the control parameters.
