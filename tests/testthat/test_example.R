@@ -1,0 +1,12 @@
+context("Simple Example")
+A <- matrix(c(1), 2, 1)
+b  <-  c(1,1)
+c  <-  c(1)
+cone  <-  list(f = 2)
+params  <-  list(eps = 1e-3, max_iters = 50)
+sol <- scs(A, b, c, cone, params)
+
+expect_equal(sol$info$status, "Solved")
+expect_equal(sol$x, 1)
+expect_equal(sol$y, c(-0.5, -0.5))
+expect_equal(sol$info$pobj, 1)
