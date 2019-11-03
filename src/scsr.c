@@ -27,6 +27,7 @@ SEXP floatVec2R(scs_int n, scs_float *in) {
   for (i = 0; i < n; i++) {
     vec[i] = in[i];
   }
+  UNPROTECT(1);
   return ret;
 }
 
@@ -63,7 +64,7 @@ scs_int *getIntVectorFromList(SEXP list, const char *str, scs_int *len) {
   return INTEGER(vec);
 }
 
-SEXP populateInfoR(ScsInfo *info, scs_int *num_protectaddr) {
+SEXP populateInfoR(ScsInfo *info) {
   scs_int num_protected = 0;
   SEXP infor, info_names, iter_r, status_r, statusVal_r, pobj_r, dobj_r,
       resPri_r, resDual_r, resInfeas_r, resUnbdd_r, relGap_r, setupTime_r,
@@ -71,88 +72,90 @@ SEXP populateInfoR(ScsInfo *info, scs_int *num_protectaddr) {
 
   PROTECT(infor = NEW_LIST(12));
   num_protected++;
+
   PROTECT(info_names = NEW_CHARACTER(12));
-  num_protected++;
   SET_NAMES(infor, info_names);
+  UNPROTECT(1);
   
   PROTECT(iter_r = allocVector(INTSXP, 1));
-  num_protected++;
   INTEGER(iter_r)[0] = info->iter;
   SET_STRING_ELT(info_names, 0, mkChar("iter"));
   SET_VECTOR_ELT(infor, 0, iter_r);
+  UNPROTECT(1);
+
   
   PROTECT(status_r = NEW_CHARACTER(1));
-  num_protected++;
   SET_STRING_ELT(status_r, 0, mkChar(info->status));
   SET_STRING_ELT(info_names, 1, mkChar("status"));
   SET_VECTOR_ELT(infor, 1, status_r);
+  UNPROTECT(1);
   
   PROTECT(statusVal_r = allocVector(INTSXP, 1));
-  num_protected++;
   INTEGER(statusVal_r)[0] = info->status_val;
   SET_STRING_ELT(info_names, 2, mkChar("statusVal"));
   SET_VECTOR_ELT(infor, 2, statusVal_r);
+  UNPROTECT(1);
   
   PROTECT(pobj_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(pobj_r)[0] = info->pobj;
   SET_STRING_ELT(info_names, 3, mkChar("pobj"));
   SET_VECTOR_ELT(infor, 3, pobj_r);
+  UNPROTECT(1);
   
   PROTECT(dobj_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(dobj_r)[0] = info->dobj;
   SET_STRING_ELT(info_names, 4, mkChar("dobj"));
   SET_VECTOR_ELT(infor, 4, dobj_r);
+  UNPROTECT(1);
   
   PROTECT(resPri_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(resPri_r)[0] = info->res_pri;
   SET_STRING_ELT(info_names, 5, mkChar("resPri"));
   SET_VECTOR_ELT(infor, 5, resPri_r);
+  UNPROTECT(1);
   
   PROTECT(resDual_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(resDual_r)[0] = info->res_dual;
   SET_STRING_ELT(info_names, 6, mkChar("resDual"));
   SET_VECTOR_ELT(infor, 6, resDual_r);
+  UNPROTECT(1);
   
   PROTECT(resInfeas_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(resInfeas_r)[0] = info->res_infeas;
   SET_STRING_ELT(info_names, 7, mkChar("resInfeas"));
   SET_VECTOR_ELT(infor, 7, resInfeas_r);
+  UNPROTECT(1);
   
   PROTECT(resUnbdd_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(resUnbdd_r)[0] = info->res_unbdd;
   SET_STRING_ELT(info_names, 8, mkChar("resUnbdd"));
   SET_VECTOR_ELT(infor, 8, resUnbdd_r);
+  UNPROTECT(1);
   
   PROTECT(relGap_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(relGap_r)[0] = info->rel_gap;
   SET_STRING_ELT(info_names, 9, mkChar("relGap"));
   SET_VECTOR_ELT(infor, 9, relGap_r);
+  UNPROTECT(1);
   
   PROTECT(setupTime_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(setupTime_r)[0] = info->setup_time;
   SET_STRING_ELT(info_names, 10, mkChar("setupTime"));
   SET_VECTOR_ELT(infor, 10, setupTime_r);
+  UNPROTECT(1);
   
   PROTECT(solveTime_r = allocVector(REALSXP, 1));
-  num_protected++;
   REAL(solveTime_r)[0] = info->solve_time;
   SET_STRING_ELT(info_names, 11, mkChar("solveTime"));
   SET_VECTOR_ELT(infor, 11, solveTime_r);
-  
-  *num_protectaddr += num_protected;
+  UNPROTECT(1);
+
+  UNPROTECT(1); /* Unprotect the first PROTECT in this fn */
   return infor;
 }
 
 SEXP scsr(SEXP data, SEXP cone, SEXP params) {
-  scs_int len, num_protected = 0;
+  scs_int len;
   SEXP ret, retnames, infor, xr, yr, sr;
 
   /* allocate memory */
@@ -203,30 +206,33 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   /* solve! */
   scs(d, k, sol, info);
 
-  infor = populateInfoR(info, &num_protected);
+  PROTECT(infor = populateInfoR(info)); /* count = 1 */
 
-  PROTECT(ret = NEW_LIST(4));
-  num_protected++;
+  PROTECT(ret = NEW_LIST(4));  /* count = 2 */
+
   PROTECT(retnames = NEW_CHARACTER(4));
-  num_protected++;
   SET_NAMES(ret, retnames);
-
-  xr = floatVec2R(d->n, sol->x);
-  num_protected++;
-  yr = floatVec2R(d->m, sol->y);
-  num_protected++;
-  sr = floatVec2R(d->m, sol->s);
-  num_protected++;
-
+  UNPROTECT(1);
+  
+  PROTECT(xr = floatVec2R(d->n, sol->x));
   SET_STRING_ELT(retnames, 0, mkChar("x"));
   SET_VECTOR_ELT(ret, 0, xr);
+  UNPROTECT(1);
+  
+  PROTECT(yr = floatVec2R(d->m, sol->y));
   SET_STRING_ELT(retnames, 1, mkChar("y"));
   SET_VECTOR_ELT(ret, 1, yr);
+  UNPROTECT(1);
+
+  PROTECT(sr = floatVec2R(d->m, sol->s));
   SET_STRING_ELT(retnames, 2, mkChar("s"));
   SET_VECTOR_ELT(ret, 2, sr);
+  UNPROTECT(1);
+
   SET_STRING_ELT(retnames, 3, mkChar("info"));
   SET_VECTOR_ELT(ret, 3, infor);
-
+  UNPROTECT(1);
+  
   /* free memory */
   scs_free(info);
   scs_free(d);
@@ -234,6 +240,6 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   scs_free(stgs);
   scs_free(A);
   SCS(free_sol)(sol);
-  UNPROTECT(num_protected);
+  UNPROTECT(1);
   return ret;
 }
