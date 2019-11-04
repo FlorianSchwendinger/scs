@@ -71,7 +71,9 @@ INDIRSRC = $(LINSYS)/indirect
 GPU = $(LINSYS)/gpu
 
 OUT = out
+ifneq ($(ISWINDOWS), 1)
 AR = ar
+endif
 ARFLAGS = rv
 ARCHIVE = $(AR) $(ARFLAGS)
 RANLIB = ranlib
