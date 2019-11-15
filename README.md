@@ -11,7 +11,7 @@
 | `rho_x`                 | numeric | x equality constraint scaling                                |   `1e-3`      |
 | `alpha`                 | numeric | relaxation parameter                                         |    `1.5`      |
 | `eps`                   | numeric | convergence tolerance                                        |   `1e-5`      |
-| `acceleration_lookback` | integer | number of iterations to look back for Anderson acceleration  |   `20`        |
+| `acceleration_lookback` | integer | number of iterations to look back for Anderson acceleration  |   `10`        |
 
 ## Reference
 * O'Donoghue Brendan, Chu Eric, Parikh Neal, Boyd Stephen (2016).

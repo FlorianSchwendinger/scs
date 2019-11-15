@@ -56,7 +56,16 @@ endif
 
 # Add on default CFLAGS
 OPT = -O3
-override CFLAGS += -g -Wall -pedantic -funroll-loops -I. -Iinclude -Ilinsys $(OPT)
+ifeq (DSOLARIS,$(findstring DSOLARIS, $(CFLAGS)))
+  ifneq (,$(findstring xc99, $(CC)))
+    override CFLAGS += -g -Wall -I. -Iinclude -Ilinsys $(OPT)
+  else
+    override CFLAGS += -g -Wall -pedantic -funroll-loops -I. -Iinclude -Ilinsys $(OPT)
+  endif
+else
+  override CFLAGS += -g -Wall -pedantic -funroll-loops -I. -Iinclude -Ilinsys $(OPT)
+endif
+
 ifneq ($(ISWINDOWS), 1)
 override CFLAGS += -fPIC
 endif

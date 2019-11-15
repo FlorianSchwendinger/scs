@@ -2,10 +2,11 @@ SCS_DIR=scs
 SCS_MODS_DIR=scs_mods
 
 SOLARIS=$(shell $(R_HOME)/bin/Rscript -e 'cat(grepl("SunOS", Sys.info()["sysname"]))')
+
 ifeq ($(SOLARIS),TRUE)
-   SOLARIS_FLAG=-DSOLARIS
+  SOLARIS_FLAG=-DSOLARIS
 else
-   SOLARIS_FLAG=-USOLARIS
+  SOLARIS_FLAG=-USOLARIS
 endif
 
 PKG_CFLAGS=$(SOLARIS_FLAG) -I./$(SCS_DIR)/include -DUSE_LAPACK -DCOPYAMATRIX -DUSING_R
