@@ -18,6 +18,7 @@ scsr.o: scs.ts
 
 scs.ts:
 	(cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR) && \
+	cp -f $(SCS_MODS_DIR)/rw.c $(SCS_DIR)/src && \
 	cp -f $(SCS_MODS_DIR)/glbopts.h $(SCS_DIR)/include && \
 	(cd $(SCS_DIR) && \
 	($(MAKE) purge && \
