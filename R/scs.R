@@ -93,12 +93,12 @@ scs <- function(A, b, obj, cone, control = scs_control()) {
 #' @param rho_x a double giving the momentum of x term (default os \code{1e-3}).
 #' @param alpha a double giving the over-relaxation parameter, allowed values are in (0, 2) (default if \code{1.5}).
 #' @param eps a double giving the convergence tolerance (default is \code{1e-5}).
-#' @param acceleration_lookback an integer indicating the number of iterations to look back for Anderson acceleration
+#' @param acceleration_lookback an integer indicating the number of iterations to look back for Anderson acceleration (default is \code{10L}).
 #' @return a list containing the control parameters.
 #' @export scs_control
 scs_control <- function(max_iters = 5000L, normalize = TRUE, verbose = FALSE,
                         cg_rate = 2.0, scale = 1.0, rho_x = 1e-03, alpha = 1.5, eps = 1e-5,
-                        acceleration_lookback = 20L) {
+                        acceleration_lookback = 10L) {
     as.list(environment())
 }
 
