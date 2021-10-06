@@ -1,199 +1,309 @@
 #include "rw.h"
-#include "scs.h"
-#include "util.h"
-#include "amatrix.h"
+
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+
+#include "linalg.h"
+#include "scs.h"
+#include "scs_matrix.h"
+#include "util.h"
+
+#define FREAD(a, b, c, d) if ( fread((a), (b), (c), (d)) != (b) ) scs_printf("error reading data\n")
+#define FWRITE(a, b, c, d) if ( fwrite((a), (b), (c), (d)) != (b) ) scs_printf("error writing data\n")
 
 /* writes/reads problem data to/from filename */
 /* This is a VERY naive implementation, doesn't care about portability etc */
 
 static void write_scs_cone(const ScsCone *k, FILE *fout) {
-  fwrite(&(k->f), sizeof(scs_int), 1, fout);
-  fwrite(&(k->l), sizeof(scs_int), 1, fout);
-  fwrite(&(k->qsize), sizeof(scs_int), 1, fout);
-  fwrite(k->q, sizeof(scs_int), k->qsize, fout);
-  fwrite(&(k->ssize), sizeof(scs_int), 1, fout);
-  fwrite(k->s, sizeof(scs_int), k->ssize, fout);
-  fwrite(&(k->ep), sizeof(scs_int), 1, fout);
-  fwrite(&(k->ed), sizeof(scs_int), 1, fout);
-  fwrite(&(k->psize), sizeof(scs_int), 1, fout);
-  fwrite(k->p, sizeof(scs_float), k->psize, fout);
+  FWRITE(&(k->z), sizeof(scs_int), 1, fout);
+  FWRITE(&(k->l), sizeof(scs_int), 1, fout);
+  FWRITE(&(k->bsize), sizeof(scs_int), 1, fout);
+  FWRITE(k->bl, sizeof(scs_float), MAX(k->bsize - 1, 0), fout);
+  FWRITE(k->bu, sizeof(scs_float), MAX(k->bsize - 1, 0), fout);
+  FWRITE(&(k->qsize), sizeof(scs_int), 1, fout);
+  FWRITE(k->q, sizeof(scs_int), k->qsize, fout);
+  FWRITE(&(k->ssize), sizeof(scs_int), 1, fout);
+  FWRITE(k->s, sizeof(scs_int), k->ssize, fout);
+  FWRITE(&(k->ep), sizeof(scs_int), 1, fout);
+  FWRITE(&(k->ed), sizeof(scs_int), 1, fout);
+  FWRITE(&(k->psize), sizeof(scs_int), 1, fout);
+  FWRITE(k->p, sizeof(scs_float), k->psize, fout);
 }
 
-static ScsCone * read_scs_cone(FILE *fin) {
-  size_t bytes;
-  ScsCone * k = (ScsCone *)scs_calloc(1, sizeof(ScsCone));
-  bytes = fread(&(k->f), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(k->l), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(k->qsize), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
+static ScsCone *read_scs_cone(FILE *fin) {
+  ScsCone *k = (ScsCone *)scs_calloc(1, sizeof(ScsCone));
+  FREAD(&(k->z), sizeof(scs_int), 1, fin);
+  FREAD(&(k->l), sizeof(scs_int), 1, fin);
+  FREAD(&(k->bsize), sizeof(scs_int), 1, fin);
+  k->bl = scs_calloc(MAX(k->bsize - 1, 0), sizeof(scs_float));
+  k->bu = scs_calloc(MAX(k->bsize - 1, 0), sizeof(scs_float));
+  FREAD(k->bl, sizeof(scs_float), MAX(k->bsize - 1, 0), fin);
+  FREAD(k->bu, sizeof(scs_float), MAX(k->bsize - 1, 0), fin);
+  FREAD(&(k->qsize), sizeof(scs_int), 1, fin);
   k->q = scs_calloc(k->qsize, sizeof(scs_int));
-  bytes = fread(k->q, sizeof(scs_int), k->qsize, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(k->ssize), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
+  FREAD(k->q, sizeof(scs_int), k->qsize, fin);
+  FREAD(&(k->ssize), sizeof(scs_int), 1, fin);
   k->s = scs_calloc(k->ssize, sizeof(scs_int));
-  bytes = fread(k->s, sizeof(scs_int), k->ssize, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(k->ep), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(k->ed), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(k->psize), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  k->p = scs_calloc(k->psize, sizeof(scs_int));
-  bytes = fread(k->p, sizeof(scs_float), k->psize, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  RETURN k;
+  FREAD(k->s, sizeof(scs_int), k->ssize, fin);
+  FREAD(&(k->ep), sizeof(scs_int), 1, fin);
+  FREAD(&(k->ed), sizeof(scs_int), 1, fin);
+  FREAD(&(k->psize), sizeof(scs_int), 1, fin);
+  k->p = scs_calloc(k->psize, sizeof(scs_float));
+  FREAD(k->p, sizeof(scs_float), k->psize, fin);
+  return k;
 }
 
 static void write_scs_stgs(const ScsSettings *s, FILE *fout) {
   /* Warm start to false for now */
   scs_int warm_start = 0;
-  fwrite(&(s->normalize), sizeof(scs_int), 1, fout);
-  fwrite(&(s->scale), sizeof(scs_float), 1, fout);
-  fwrite(&(s->rho_x), sizeof(scs_float), 1, fout);
-  fwrite(&(s->max_iters), sizeof(scs_int), 1, fout);
-  fwrite(&(s->eps), sizeof(scs_float), 1, fout);
-  fwrite(&(s->alpha), sizeof(scs_float), 1, fout);
-  fwrite(&(s->cg_rate), sizeof(scs_float), 1, fout);
-  fwrite(&(s->verbose), sizeof(scs_int), 1, fout);
-  fwrite(&warm_start, sizeof(scs_int), 1, fout);
-  fwrite(&(s->acceleration_lookback), sizeof(scs_int), 1, fout);
+  FWRITE(&(s->normalize), sizeof(scs_int), 1, fout);
+  FWRITE(&(s->scale), sizeof(scs_float), 1, fout);
+  FWRITE(&(s->rho_x), sizeof(scs_float), 1, fout);
+  FWRITE(&(s->max_iters), sizeof(scs_int), 1, fout);
+  FWRITE(&(s->eps_abs), sizeof(scs_float), 1, fout);
+  FWRITE(&(s->eps_rel), sizeof(scs_float), 1, fout);
+  FWRITE(&(s->eps_infeas), sizeof(scs_float), 1, fout);
+  FWRITE(&(s->alpha), sizeof(scs_float), 1, fout);
+  FWRITE(&(s->verbose), sizeof(scs_int), 1, fout);
+  FWRITE(&warm_start, sizeof(scs_int), 1, fout);
+  FWRITE(&(s->acceleration_lookback), sizeof(scs_int), 1, fout);
+  FWRITE(&(s->acceleration_interval), sizeof(scs_int), 1, fout);
+  FWRITE(&(s->adaptive_scale), sizeof(scs_int), 1, fout);
   /* Do not write the write_data_filename */
+  /* Do not write the log_csv_filename */
 }
 
-static ScsSettings * read_scs_stgs(FILE *fin) {
-  size_t bytes;
-  ScsSettings * s = (ScsSettings *)scs_calloc(1, sizeof(ScsSettings));
-  bytes = fread(&(s->normalize), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->scale), sizeof(scs_float), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->rho_x), sizeof(scs_float), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->max_iters), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->eps), sizeof(scs_float), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->alpha), sizeof(scs_float), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->cg_rate), sizeof(scs_float), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->verbose), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->warm_start), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(s->acceleration_lookback), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  RETURN s;
+static ScsSettings *read_scs_stgs(FILE *fin) {
+  ScsSettings *s = (ScsSettings *)scs_calloc(1, sizeof(ScsSettings));
+  FREAD(&(s->normalize), sizeof(scs_int), 1, fin);
+  FREAD(&(s->scale), sizeof(scs_float), 1, fin);
+  FREAD(&(s->rho_x), sizeof(scs_float), 1, fin);
+  FREAD(&(s->max_iters), sizeof(scs_int), 1, fin);
+  FREAD(&(s->eps_abs), sizeof(scs_float), 1, fin);
+  FREAD(&(s->eps_rel), sizeof(scs_float), 1, fin);
+  FREAD(&(s->eps_infeas), sizeof(scs_float), 1, fin);
+  FREAD(&(s->alpha), sizeof(scs_float), 1, fin);
+  FREAD(&(s->verbose), sizeof(scs_int), 1, fin);
+  FREAD(&(s->warm_start), sizeof(scs_int), 1, fin);
+  FREAD(&(s->acceleration_lookback), sizeof(scs_int), 1, fin);
+  FREAD(&(s->acceleration_interval), sizeof(scs_int), 1, fin);
+  FREAD(&(s->adaptive_scale), sizeof(scs_int), 1, fin);
+  return s;
 }
 
-static void write_amatrix(const ScsMatrix * A, FILE * fout) {
+static void write_amatrix(const ScsMatrix *A, FILE *fout) {
   scs_int Anz = A->p[A->n];
-  fwrite(&(A->m), sizeof(scs_int), 1, fout);
-  fwrite(&(A->n), sizeof(scs_int), 1, fout);
-  fwrite(A->p, sizeof(scs_int), A->n + 1, fout);
-  fwrite(A->x, sizeof(scs_float), Anz, fout);
-  fwrite(A->i, sizeof(scs_int), Anz, fout);
+  FWRITE(&(A->m), sizeof(scs_int), 1, fout);
+  FWRITE(&(A->n), sizeof(scs_int), 1, fout);
+  FWRITE(A->p, sizeof(scs_int), A->n + 1, fout);
+  FWRITE(A->x, sizeof(scs_float), Anz, fout);
+  FWRITE(A->i, sizeof(scs_int), Anz, fout);
 }
 
-static ScsMatrix * read_amatrix(FILE * fin) {
+static ScsMatrix *read_amatrix(FILE *fin) {
   scs_int Anz;
-  size_t bytes;
-  ScsMatrix * A = (ScsMatrix *)scs_calloc(1, sizeof(ScsMatrix));
-  bytes = fread(&(A->m), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(A->n), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
+  ScsMatrix *A = (ScsMatrix *)scs_calloc(1, sizeof(ScsMatrix));
+  FREAD(&(A->m), sizeof(scs_int), 1, fin);
+  FREAD(&(A->n), sizeof(scs_int), 1, fin);
   A->p = scs_calloc(A->n + 1, sizeof(scs_int));
-  bytes = fread(A->p, sizeof(scs_int), A->n + 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
+  FREAD(A->p, sizeof(scs_int), A->n + 1, fin);
   Anz = A->p[A->n];
   A->x = scs_calloc(Anz, sizeof(scs_float));
   A->i = scs_calloc(Anz, sizeof(scs_int));
-  bytes = fread(A->x, sizeof(scs_float), Anz, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(A->i, sizeof(scs_int), Anz, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  RETURN A;
+  FREAD(A->x, sizeof(scs_float), Anz, fin);
+  FREAD(A->i, sizeof(scs_int), Anz, fin);
+  return A;
 }
 
 static void write_scs_data(const ScsData *d, FILE *fout) {
-  fwrite(&(d->m), sizeof(scs_int), 1, fout);
-  fwrite(&(d->n), sizeof(scs_int), 1, fout);
-  fwrite(d->b, sizeof(scs_float), d->m, fout);
-  fwrite(d->c, sizeof(scs_float), d->n, fout);
-  write_scs_stgs(d->stgs, fout);
+  scs_int has_p = d->P ? 1 : 0;
+  FWRITE(&(d->m), sizeof(scs_int), 1, fout);
+  FWRITE(&(d->n), sizeof(scs_int), 1, fout);
+  FWRITE(d->b, sizeof(scs_float), d->m, fout);
+  FWRITE(d->c, sizeof(scs_float), d->n, fout);
   write_amatrix(d->A, fout);
+  /* write has P bit */
+  FWRITE(&has_p, sizeof(scs_int), 1, fout);
+  if (d->P) {
+    write_amatrix(d->P, fout);
+  }
 }
 
-static ScsData * read_scs_data(FILE *fin) {
-  size_t bytes;
-  ScsData * d = (ScsData *)scs_calloc(1, sizeof(ScsData));
-  bytes = fread(&(d->m), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(d->n), sizeof(scs_int), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
+static ScsData *read_scs_data(FILE *fin) {
+  scs_int has_p = 0;
+  ScsData *d = (ScsData *)scs_calloc(1, sizeof(ScsData));
+  FREAD(&(d->m), sizeof(scs_int), 1, fin);
+  FREAD(&(d->n), sizeof(scs_int), 1, fin);
   d->b = scs_calloc(d->m, sizeof(scs_float));
   d->c = scs_calloc(d->n, sizeof(scs_float));
-  bytes = fread(d->b, sizeof(scs_float), d->m, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(d->c, sizeof(scs_float), d->n, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  d->stgs = read_scs_stgs(fin);
+  FREAD(d->b, sizeof(scs_float), d->m, fin);
+  FREAD(d->c, sizeof(scs_float), d->n, fin);
   d->A = read_amatrix(fin);
-  RETURN d;
+  /* If has_p bit is not set or this hits end of file then has_p = 0 */
+  has_p &= fread(&has_p, sizeof(scs_int), 1, fin);
+  d->P = has_p ? read_amatrix(fin) : SCS_NULL;
+  return d;
 }
 
-void SCS(write_data)(const ScsData *d, const ScsCone *k) {
-  FILE* fout = fopen(d->stgs->write_data_filename, "wb");
-  uint32_t scs_int_sz = (uint32_t)sizeof(scs_int);
-  uint32_t scs_float_sz = (uint32_t)sizeof(scs_float);
-  scs_printf("writing data to %s\n", d->stgs->write_data_filename);
-  fwrite(&(scs_int_sz), sizeof(uint32_t), 1, fout);
-  fwrite(&(scs_float_sz), sizeof(uint32_t), 1, fout);
+void SCS(write_data)(const ScsData *d, const ScsCone *k,
+                     const ScsSettings *stgs) {
+  FILE *fout = fopen(stgs->write_data_filename, "wb");
+  uint32_t scs_int_sz = (uint32_t)SCS(sizeof_int)();
+  uint32_t scs_float_sz = (uint32_t)SCS(sizeof_float)();
+  const char *scs_version = SCS_VERSION;
+  uint32_t scs_version_sz = (uint32_t)strlen(scs_version);
+  scs_printf("writing data to %s\n", stgs->write_data_filename);
+  FWRITE(&(scs_int_sz), sizeof(uint32_t), 1, fout);
+  FWRITE(&(scs_float_sz), sizeof(uint32_t), 1, fout);
+  FWRITE(&(scs_version_sz), sizeof(uint32_t), 1, fout);
+  FWRITE(scs_version, 1, scs_version_sz, fout);
   write_scs_cone(k, fout);
   write_scs_data(d, fout);
+  write_scs_stgs(stgs, fout);
   fclose(fout);
 }
 
-scs_int SCS(read_data)(const char * filename, ScsData ** d, ScsCone ** k) {
+scs_int SCS(read_data)(const char *filename, ScsData **d, ScsCone **k,
+                       ScsSettings **stgs) {
   uint32_t file_int_sz;
   uint32_t file_float_sz;
-  size_t bytes;
-  FILE* fin = fopen(filename, "rb");
+  uint32_t file_version_sz;
+  char file_version[16];
+  FILE *fin = fopen(filename, "rb");
   if (!fin) {
     scs_printf("Error reading file %s\n", filename);
-    RETURN -1;
+    return -1;
   }
   scs_printf("Reading data from %s\n", filename);
-  bytes = fread(&(file_int_sz), sizeof(uint32_t), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  bytes = fread(&(file_float_sz), sizeof(uint32_t), 1, fin);
-  if (!bytes) scs_printf("no data read!\n");
-  
+  FREAD(&(file_int_sz), sizeof(uint32_t), 1, fin);
+  FREAD(&(file_float_sz), sizeof(uint32_t), 1, fin);
   if (file_int_sz != (uint32_t)sizeof(scs_int)) {
-    scs_printf("Error, sizeof(file int) is %lu, but scs expects sizeof(int) "
-        "%lu, scs should be recompiled with correct flags.\n",
+    scs_printf(
+        "Error, sizeof(file int) is %lu, but scs expects sizeof(int) %lu, "
+        "scs should be recompiled with correct flags.\n",
         (unsigned long)file_int_sz, (unsigned long)sizeof(scs_int));
     fclose(fin);
-    RETURN -1;
+    return -1;
   }
-  if (file_float_sz != (uint32_t)sizeof(scs_float )) {
-    scs_printf("Error, sizeof(file float) is %lu, but scs expects "
-        "sizeof(float) %lu, scs should be recompiled with the correct flags.\n",
+  if (file_float_sz != (uint32_t)sizeof(scs_float)) {
+    scs_printf(
+        "Error, sizeof(file float) is %lu, but scs expects sizeof(float) %lu, "
+        "scs should be recompiled with the correct flags.\n",
         (unsigned long)file_float_sz, (unsigned long)sizeof(scs_float));
     fclose(fin);
-    RETURN -1;
+    return -1;
   }
-
+  FREAD(&(file_version_sz), sizeof(uint32_t), 1, fin);
+  FREAD(file_version, 1, file_version_sz, fin);
+  file_version[file_version_sz] = '\0';
+  if (strcmp(file_version, SCS_VERSION) != 0) {
+    scs_printf("************************************************************\n"
+               "Warning: SCS file version %s, this is SCS version %s.\n"
+               "The file reading / writing logic might have changed.\n"
+               "************************************************************\n",
+               file_version, SCS_VERSION);
+  }
   *k = read_scs_cone(fin);
   *d = read_scs_data(fin);
+  *stgs = read_scs_stgs(fin);
   fclose(fin);
-  RETURN 0;
+  return 0;
+}
+
+void SCS(log_data_to_csv)(const ScsData *d, const ScsCone *k,
+                          const ScsSettings *stgs, const ScsWork *w,
+                          scs_int iter, SCS(timer) * solve_timer) {
+  ScsResiduals *r = w->r_orig;
+  ScsResiduals *r_n = w->r_normalized;
+  /* if iter 0 open to write, else open to append */
+  FILE *fout = fopen(stgs->log_csv_filename, iter == 0 ? "w" : "a");
+  if (!fout) {
+    scs_printf("Error: Could not open %s for writing\n",
+               stgs->log_csv_filename);
+    return;
+  }
+  scs_int l = w->m + w->n + 1;
+  if (iter == 0) {
+    /* need to end in comma so that csv parsing is correct */
+    fprintf(fout, "iter,"
+                  "res_pri,"
+                  "res_dual,"
+                  "gap,"
+                  "ax_s_btau_nrm_inf,"
+                  "px_aty_ctau_nrm_inf,"
+                  "ax_s_btau_nrm_2,"
+                  "px_aty_ctau_nrm_2,"
+                  "res_infeas,"
+                  "res_unbdd_a,"
+                  "res_unbdd_p,"
+                  "pobj,"
+                  "dobj,"
+                  "tau,"
+                  "kap,"
+                  "res_pri_normalized,"
+                  "res_dual_normalized,"
+                  "gap_normalized,"
+                  "ax_s_btau_nrm_inf_normalized,"
+                  "px_aty_ctau_nrm_inf_normalized,"
+                  "ax_s_btau_nrm_2_normalized,"
+                  "px_aty_ctau_nrm_2_normalized,"
+                  "res_infeas_normalized,"
+                  "res_unbdd_a_normalized,"
+                  "res_unbdd_p_normalized,"
+                  "pobj_normalized,"
+                  "dobj_normalized,"
+                  "tau_normalized,"
+                  "kap_normalized,"
+                  "scale,"
+                  "diff_u_ut_nrm_2,"
+                  "diff_v_v_prev_nrm_2,"
+                  "diff_u_ut_nrm_inf,"
+                  "diff_v_v_prev_nrm_inf,"
+                  "aa_norm,"
+                  "accepted_accel_steps,"
+                  "rejected_accel_steps,"
+                  "time,"
+                  "\n");
+  }
+  fprintf(fout, "%li,", (long)iter);
+  fprintf(fout, "%.16e,", r->res_pri);
+  fprintf(fout, "%.16e,", r->res_dual);
+  fprintf(fout, "%.16e,", r->gap);
+  fprintf(fout, "%.16e,", SCS(norm_inf)(r->ax_s_btau, w->m));
+  fprintf(fout, "%.16e,", SCS(norm_inf)(r->px_aty_ctau, w->n));
+  fprintf(fout, "%.16e,", SCS(norm_2)(r->ax_s_btau, w->m));
+  fprintf(fout, "%.16e,", SCS(norm_2)(r->px_aty_ctau, w->n));
+  fprintf(fout, "%.16e,", r->res_infeas);
+  fprintf(fout, "%.16e,", r->res_unbdd_a);
+  fprintf(fout, "%.16e,", r->res_unbdd_p);
+  fprintf(fout, "%.16e,", r->pobj);
+  fprintf(fout, "%.16e,", r->dobj);
+  fprintf(fout, "%.16e,", r->tau);
+  fprintf(fout, "%.16e,", r->kap);
+  fprintf(fout, "%.16e,", r_n->res_pri);
+  fprintf(fout, "%.16e,", r_n->res_dual);
+  fprintf(fout, "%.16e,", r_n->gap);
+  fprintf(fout, "%.16e,", SCS(norm_inf)(r_n->ax_s_btau, w->m));
+  fprintf(fout, "%.16e,", SCS(norm_inf)(r_n->px_aty_ctau, w->n));
+  fprintf(fout, "%.16e,", SCS(norm_2)(r_n->ax_s_btau, w->m));
+  fprintf(fout, "%.16e,", SCS(norm_2)(r_n->px_aty_ctau, w->n));
+  fprintf(fout, "%.16e,", r_n->res_infeas);
+  fprintf(fout, "%.16e,", r_n->res_unbdd_a);
+  fprintf(fout, "%.16e,", r_n->res_unbdd_p);
+  fprintf(fout, "%.16e,", r_n->pobj);
+  fprintf(fout, "%.16e,", r_n->dobj);
+  fprintf(fout, "%.16e,", r_n->tau);
+  fprintf(fout, "%.16e,", r_n->kap);
+  fprintf(fout, "%.16e,", w->scale);
+  fprintf(fout, "%.16e,", SCS(norm_diff)(w->u, w->u_t, l));
+  fprintf(fout, "%.16e,", SCS(norm_diff)(w->v, w->v_prev, l));
+  fprintf(fout, "%.16e,", SCS(norm_inf_diff)(w->u, w->u_t, l));
+  fprintf(fout, "%.16e,", SCS(norm_inf_diff)(w->v, w->v_prev, l));
+  fprintf(fout, "%.16e,", w->aa_norm);
+  fprintf(fout, "%li,", (long)w->accepted_accel_steps);
+  fprintf(fout, "%li,", (long)w->rejected_accel_steps);
+  fprintf(fout, "%.16e,", SCS(tocq)(solve_timer) / 1e3);
+  fprintf(fout, "\n");
+  fclose(fout);
 }
