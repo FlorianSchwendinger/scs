@@ -1,6 +1,6 @@
 context("Simple Example")
 
-test_that{"A simple example", {
+test_that("A simple example", {
   A <- matrix(c(1), 2, 1)
   b  <-  c(1,1)
   c  <-  c(1)
