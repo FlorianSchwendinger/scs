@@ -11,6 +11,7 @@
 #' @param obj a numeric vector giving the primal objective
 #' @param P a symmetric positive semidefinite matrix, default \code{NULL}
 #' @param cone a list giving the cone sizes
+#' @param initial a named list (warm start solution) of three elements: \code{x} (length = \code{length(obj)}), \code{y} (length = \code{nrow(A)}), and \code{s} (length = \code{nrow(A)}), default NULL indicating no warm start.
 #' @param control a list giving the control parameters. For more information see \bold{README}.
 #' @return list of solution vectors x, y, s and information about run
 #' @useDynLib scs, .registration = TRUE
@@ -60,7 +61,7 @@
 #' sol <- scs(A = A, b = b, obj = obj, cone = cone, control = control)
 #' sol
 #  ---------------------------------------------------------
-scs <- function(A, b, obj, P = NULL, cone, control = scs_control()) {
+scs <- function(A, b, obj, P = NULL, cone, initial = NULL, control = scs_control()) {
 
     control <- update_default_controls(control)
 
@@ -95,6 +96,9 @@ scs <- function(A, b, obj, P = NULL, cone, control = scs_control()) {
         data$Px <- csc[["values"]]
       }
     }
+
+    if (!is.null(start)) data$initial <- initial
+
     ret <- .Call("scsr", data, cone, control, PACKAGE = "scs")
     return(ret)
 }
@@ -110,7 +114,7 @@ scs <- function(A, b, obj, P = NULL, cone, control = scs_control()) {
 #' @param scale a double giving the factor (default is \code{1.0}) by which the data is rescaled (only used if normalize is \code{TRUE}).
 #' @param verbose a logical giving if the progress should be printed (default is \code{FALSE}).
 #' @param normalize a logical giving if heuristic data rescaling should be used (default is \code{TRUE}).
-#' @param warm_start a logical indicating if a warm_start is provided (default is \code{FALSE}).
+#' @param warm_start a logical indicating if a warm_start is provided (default \code{FALSE}, but a call to \code{scs} with a non-null \code{initial} argument overrides it to be effectively \code{TRUE})
 #' @param acceleration_lookback an integer indicating How much memory to use for Anderson acceleration. More memory requires more time to compute but can give more reliable steps (default \code{0L}, disabling it).
 #' @param acceleration_interval an integer specifying the number of iterations for which Anderson acceleration is run (default \code{1L}).
 #' @param adaptive_scale a logical indicating whether to heuristically adapt dual through the solve (default \code{TRUE}).

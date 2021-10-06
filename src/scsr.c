@@ -213,6 +213,7 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   scs_int len, exit_flag;
   SEXP ret, retnames, infor, xr, yr, sr;
 
+  printf("Entering scsr\n");
   /* allocate memory */
   ScsData *d = scs_malloc(sizeof(ScsData));
   ScsCone *k = scs_malloc(sizeof(ScsCone));
@@ -222,11 +223,13 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   ScsInfo *info = scs_calloc(1, sizeof(ScsInfo));
   ScsSolution *sol = scs_calloc(1, sizeof(ScsSolution));
 
+  printf("Setting b, c, n, m\n");  
   d->b = getFloatVectorFromList(data, "b", &len);
   d->c = getFloatVectorFromList(data, "c", &len);
   d->n = getIntFromListWithDefault(data, "n", 0);
   d->m = getIntFromListWithDefault(data, "m", 0);
 
+  printf("Setting A\n");  
   A->m = d->m;
   A->n = d->n;
   A->x = getFloatVectorFromList(data, "Ax", &len);
@@ -234,6 +237,7 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   A->p = getIntVectorFromList(data, "Ap", &len);
   d->A = A;
 
+  printf("Setting P\n");    
   SEXP tmp = getListElement(data, "Px");
   if (tmp != R_NilValue) {
     P = scs_malloc(sizeof(ScsMatrix));
@@ -244,7 +248,8 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
     P->n = d->n;
   }
   d->P = P;    
-  
+
+  printf("Setting settings\n");    
   /* New parameters for scs 3.0; see scs/src/include/glbopts.h for details*/
   stgs->max_iters = getIntFromListWithDefault(params, "max_iters", MAX_ITERS);
   stgs->eps_rel = getFloatFromListWithDefault(params, "eps_rel", EPS_REL);
@@ -255,7 +260,6 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   stgs->scale = getFloatFromListWithDefault(params, "scale", SCALE);
   stgs->verbose = getIntFromListWithDefault(params, "verbose", VERBOSE);
   stgs->normalize = getIntFromListWithDefault(params, "normalize", NORMALIZE);
-  stgs->warm_start = getIntFromListWithDefault(params, "warm_start", WARM_START);
   stgs->acceleration_lookback = getIntFromListWithDefault(params, "acceleration_lookback",
 							  ACCELERATION_LOOKBACK);
   stgs->acceleration_interval = getIntFromListWithDefault(params, "acceleration_interval",
@@ -265,9 +269,25 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   stgs->write_data_filename = NULL;
   stgs->log_csv_filename = NULL;
   stgs->time_limit_secs = getFloatFromListWithDefault(params, "time_limit_secs", TIME_LIMIT_SECS);
-  
+
+  printf("Setting warm start\n");    
   /* TODO add warm starting */
   /* d->stgs = stgs; */
+  /* Warm start data consists of x, y, s from previous solution and need to be stuffed into */
+  /* solution struct */
+  SEXP initial = getListElement(data, "initial");
+  if (initial == R_NilValue) {
+    stgs->warm_start = WARM_START;
+  } else {
+    printf("We have warm start\n");
+    stgs->warm_start = 1;
+    sol->x = getFloatVectorFromList(initial, "x", &len);
+    printf("X done\n");
+    sol->y = getFloatVectorFromList(initial, "y", &len);
+    printf("Y done\n");
+    sol->s = getFloatVectorFromList(initial, "s", &len);    
+    printf("S done\n");
+  }
   
   k->z = getIntFromListWithDefault(cone, "z", 0);
   k->l = getIntFromListWithDefault(cone, "l", 0);

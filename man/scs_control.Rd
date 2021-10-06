@@ -42,7 +42,7 @@ scs_control(
 
 \item{normalize}{a logical giving if heuristic data rescaling should be used (default is \code{TRUE}).}
 
-\item{warm_start}{a logical indicating if a warm_start is provided (default is \code{FALSE}).}
+\item{warm_start}{a logical indicating if a warm_start is provided (default \code{FALSE}, but a call to \code{scs} with a non-null \code{initial} argument overrides it to be effectively \code{TRUE})}
 
 \item{acceleration_lookback}{an integer indicating How much memory to use for Anderson acceleration. More memory requires more time to compute but can give more reliable steps (default \code{0L}, disabling it).}
 

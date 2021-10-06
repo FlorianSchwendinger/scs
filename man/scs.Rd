@@ -4,7 +4,7 @@
 \alias{scs}
 \title{SCS - Splitting Conic Solver}
 \usage{
-scs(A, b, obj, P = NULL, cone, control = scs_control())
+scs(A, b, obj, P = NULL, cone, initial = NULL, control = scs_control())
 }
 \arguments{
 \item{A}{a matrix of constraint coefficients.
@@ -18,6 +18,8 @@ order given in subsection \dQuote{Allowed cone parameters}. For more information
 \item{P}{a symmetric positive semidefinite matrix, default \code{NULL}}
 
 \item{cone}{a list giving the cone sizes}
+
+\item{initial}{a named list (warm start solution) of three elements: \code{x} (length = \code{length(obj)}), \code{y} (length = \code{nrow(A)}), and \code{s} (length = \code{nrow(A)}), default NULL indicating no warm start.}
 
 \item{control}{a list giving the control parameters. For more information see \bold{README}.}
 }
