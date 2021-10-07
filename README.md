@@ -14,13 +14,13 @@
 |scale                 |0.1           |numeric |Initial dual scale factor, updated if `adaptive_scale` is True                 |
 |verbose               |FALSE         |boolean |Write out progress                                                             |
 |normalize             |TRUE          |boolean |Whether to perform heuristic data rescaling                                    |
-|warm_start            |FALSE         |boolean |Whether to warm start (ignored)                                                |
+|warm_start            |FALSE         |boolean |Whether to warm start                                                |
 |acceleration_lookback |0             |integer |How much memory to use for Anderson acceleration                               |
 |acceleration_interval |1             |integer |Run Anderson acceleration every this number of iterations                      |
 |adaptive_scale        |TRUE          |boolean |Whether to heuristically adapt dual `scale` through the solve                  |
-|log_csv_filename      |              |string  |If non `NULL` SCS will write csv logs of various quantities through the solver |
+|log_csv_filename      |              |string  |If non `NULL` SCS will write logs of quantities through the solver (ignored)   |
 |time_limit_secs       |0             |numeric |Time limit for solve run in seconds (can be fractional, 0 implies no limit     |
-|write_data_filename   |              |string  |If non `NULL`set the problem data is dumped to this filename                   |
+|write_data_filename   |              |string  |If non `NULL`set the problem data is dumped to this filename (ignored)         |
 
 
 ## Reference

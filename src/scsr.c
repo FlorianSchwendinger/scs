@@ -213,7 +213,6 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   scs_int len, exit_flag;
   SEXP ret, retnames, infor, xr, yr, sr;
 
-  printf("Entering scsr\n");
   /* allocate memory */
   ScsData *d = scs_malloc(sizeof(ScsData));
   ScsCone *k = scs_malloc(sizeof(ScsCone));
@@ -222,34 +221,32 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   ScsMatrix *P = SCS_NULL;
   ScsInfo *info = scs_calloc(1, sizeof(ScsInfo));
   ScsSolution *sol = scs_calloc(1, sizeof(ScsSolution));
-
-  printf("Setting b, c, n, m\n");  
+  scs_int m, n;
+  scs_float *fptr;
+  
   d->b = getFloatVectorFromList(data, "b", &len);
   d->c = getFloatVectorFromList(data, "c", &len);
-  d->n = getIntFromListWithDefault(data, "n", 0);
-  d->m = getIntFromListWithDefault(data, "m", 0);
+  n = d->n = getIntFromListWithDefault(data, "n", 0);
+  m = d->m = getIntFromListWithDefault(data, "m", 0);
 
-  printf("Setting A\n");  
-  A->m = d->m;
-  A->n = d->n;
+  A->m = m;
+  A->n = n;
   A->x = getFloatVectorFromList(data, "Ax", &len);
   A->i = getIntVectorFromList(data, "Ai", &len);
   A->p = getIntVectorFromList(data, "Ap", &len);
   d->A = A;
 
-  printf("Setting P\n");    
   SEXP tmp = getListElement(data, "Px");
   if (tmp != R_NilValue) {
     P = scs_malloc(sizeof(ScsMatrix));
     P->x = getFloatVectorFromList(data, "Px", &len);
     P->i = getIntVectorFromList(data, "Pi", &len);
     P->p = getIntVectorFromList(data, "Pp", &len);
-    P->m = d->n;
-    P->n = d->n;
+    P->m = n;
+    P->n = n;
   }
   d->P = P;    
 
-  printf("Setting settings\n");    
   /* New parameters for scs 3.0; see scs/src/include/glbopts.h for details*/
   stgs->max_iters = getIntFromListWithDefault(params, "max_iters", MAX_ITERS);
   stgs->eps_rel = getFloatFromListWithDefault(params, "eps_rel", EPS_REL);
@@ -270,23 +267,22 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   stgs->log_csv_filename = NULL;
   stgs->time_limit_secs = getFloatFromListWithDefault(params, "time_limit_secs", TIME_LIMIT_SECS);
 
-  printf("Setting warm start\n");    
-  /* TODO add warm starting */
-  /* d->stgs = stgs; */
   /* Warm start data consists of x, y, s from previous solution and need to be stuffed into */
-  /* solution struct */
+  /* the solution struct */
   SEXP initial = getListElement(data, "initial");
   if (initial == R_NilValue) {
     stgs->warm_start = WARM_START;
   } else {
-    printf("We have warm start\n");
     stgs->warm_start = 1;
-    sol->x = getFloatVectorFromList(initial, "x", &len);
-    printf("X done\n");
-    sol->y = getFloatVectorFromList(initial, "y", &len);
-    printf("Y done\n");
-    sol->s = getFloatVectorFromList(initial, "s", &len);    
-    printf("S done\n");
+    sol->x = (scs_float *)scs_calloc(d->n, sizeof(scs_float));
+    fptr = getFloatVectorFromList(initial, "x", &len);
+    memcpy(sol->x, fptr, n * sizeof(scs_float));
+    sol->y = (scs_float *)scs_calloc(d->m, sizeof(scs_float));
+    fptr = getFloatVectorFromList(initial, "y", &len);
+    memcpy(sol->y, fptr, m * sizeof(scs_float));
+    sol->s = (scs_float *)scs_calloc(d->m, sizeof(scs_float));
+    fptr = getFloatVectorFromList(initial, "s", &len);
+    memcpy(sol->s, fptr, m * sizeof(scs_float));
   }
   
   k->z = getIntFromListWithDefault(cone, "z", 0);

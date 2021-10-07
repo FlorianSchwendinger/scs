@@ -97,7 +97,7 @@ scs <- function(A, b, obj, P = NULL, cone, initial = NULL, control = scs_control
       }
     }
 
-    if (!is.null(start)) data$initial <- initial
+    data$initial <- initial
 
     ret <- .Call("scsr", data, cone, control, PACKAGE = "scs")
     return(ret)

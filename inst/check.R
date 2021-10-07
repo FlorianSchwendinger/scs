@@ -48,5 +48,3 @@ fname  <- rds_files[10]
 d  <- readRDS(file.path("../tests/testthat/problem_results", fname))
 sol <- scs(A = d$data$A, P = d$data$P, b = d$data$b, obj = d$data$obj, initial = d$sol, cone = d$cone, control = d$settings)
 
-expect_equal(sol$info[info_vars_to_check], d$sol$info[info_vars_to_check], tolerance = d$settings$eps_abs)
-expect_equal(sol[sol_vars_to_check], d$sol[sol_vars_to_check], tolerance = d$settings$eps_abs)
