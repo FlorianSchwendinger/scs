@@ -4,7 +4,7 @@
 \alias{scs}
 \title{SCS - Splitting Conic Solver}
 \usage{
-scs(A, b, obj, cone, control = scs_control())
+scs(A, b, obj, P = NULL, cone, initial = NULL, control = scs_control())
 }
 \arguments{
 \item{A}{a matrix of constraint coefficients.
@@ -15,7 +15,11 @@ order given in subsection \dQuote{Allowed cone parameters}. For more information
 
 \item{obj}{a numeric vector giving the primal objective}
 
+\item{P}{a symmetric positive semidefinite matrix, default \code{NULL}}
+
 \item{cone}{a list giving the cone sizes}
+
+\item{initial}{a named list (warm start solution) of three elements: \code{x} (length = \code{length(obj)}), \code{y} (length = \code{nrow(A)}), and \code{s} (length = \code{nrow(A)}), default NULL indicating no warm start.}
 
 \item{control}{a list giving the control parameters. For more information see \bold{README}.}
 }
@@ -47,9 +51,12 @@ rows corresponding to \emph{exponential cones} fifth and rows corresponding to \
 \subsection{Allowed \emph{cone} parameters are}{
 \tabular{rllll}{
    \tab \bold{Parameter} \tab \bold{Type} \tab \bold{Length} \tab \bold{Description}                       \cr
-   \tab \code{f}         \tab integer     \tab \eqn{1}       \tab number of primal zero cones (dual free cones),       \cr
+   \tab \code{z}         \tab integer     \tab \eqn{1}       \tab number of primal zero cones (dual free cones),       \cr
    \tab                  \tab             \tab               \tab which corresponds to the primal equality constraints \cr
    \tab \code{l}         \tab integer     \tab \eqn{1}       \tab number of linear cones (non-negative cones)          \cr
+   \tab \code{bsize}     \tab integer     \tab \eqn{1}       \tab size of box cone                                     \cr
+   \tab \code{bl}        \tab numeric     \tab \eqn{bsize-1} \tab lower limit for box cone                             \cr
+   \tab \code{bu}        \tab numeric     \tab \eqn{bsize-1} \tab upper limit for box cone                             \cr
    \tab \code{q}         \tab integer     \tab \eqn{\geq1}   \tab vector of second-order cone sizes                    \cr
    \tab \code{s}         \tab integer     \tab \eqn{\geq1}   \tab vector of positive semidefinite cone sizes           \cr
    \tab \code{ep}        \tab integer     \tab \eqn{1}       \tab number of primal exponential cones                   \cr
@@ -61,8 +68,8 @@ rows corresponding to \emph{exponential cones} fifth and rows corresponding to \
 A <- matrix(c(1, 1), ncol=1)
 b <- c(1, 1)
 obj <- 1
-cone <- list(f = 2)
-control <- list(eps = 1e-3, max_iters = 50)
-sol <- scs(A, b, obj, cone, control)
+cone <- list(z = 2)
+control <- list(eps_rel = 1e-3, eps_abs = 1e-3, max_iters = 50)
+sol <- scs(A = A, b = b, obj = obj, cone = cone, control = control)
 sol
 }

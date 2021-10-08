@@ -4,28 +4,57 @@
 \alias{scs_control}
 \title{SCS Control Arguments}
 \usage{
-scs_control(max_iters = 5000L, normalize = TRUE, verbose = FALSE,
-  cg_rate = 2, scale = 1, rho_x = 0.001, alpha = 1.5,
-  eps = 1e-05, acceleration_lookback = 10L)
+scs_control(
+  max_iters = 100000L,
+  eps_rel = 1e-04,
+  eps_abs = 1e-04,
+  eps_infeas = 1e-07,
+  alpha = 1.5,
+  rho_x = 1e-06,
+  scale = 0.1,
+  verbose = FALSE,
+  normalize = TRUE,
+  warm_start = FALSE,
+  acceleration_lookback = 0L,
+  acceleration_interval = 1L,
+  adaptive_scale = TRUE,
+  write_data_filename = NULL,
+  log_csv_filename = NULL,
+  time_limit_secs = 0
+)
 }
 \arguments{
-\item{max_iters}{an integer giving the maximum number of iterations (default is \code{5000L}).}
+\item{max_iters}{an integer giving the maximum number of iterations (default is \code{100000L}).}
 
-\item{normalize}{a logical giving if heuristic data rescaling should be used (default is \code{TRUE}).}
+\item{eps_rel}{a double specifying relative feasibility tolerance (default \code{1e-4}).}
 
-\item{verbose}{a logical giving if the progress should be printed (default is \code{FALSE}).}
+\item{eps_abs}{a double specifying absolute feasibility tolerance (default \code{1e-4}).}
 
-\item{cg_rate}{a double giving the rate at which the CG tolerance for the indirect method is tightened (higher is tighter, default is \code{2.0}).}
+\item{eps_infeas}{a double specifying infeasibility tolerance (primal and dual) (default \code{1e-7}).}
+
+\item{alpha}{a double giving the (Douglas-Rachford) over-relaxation parameter, allowed values are in (0, 2) (default \code{1.5}).}
+
+\item{rho_x}{a double giving the momentum of x term (default os \code{1e-6}).}
 
 \item{scale}{a double giving the factor (default is \code{1.0}) by which the data is rescaled (only used if normalize is \code{TRUE}).}
 
-\item{rho_x}{a double giving the momentum of x term (default os \code{1e-3}).}
+\item{verbose}{a logical giving if the progress should be printed (default is \code{FALSE}).}
 
-\item{alpha}{a double giving the over-relaxation parameter, allowed values are in (0, 2) (default if \code{1.5}).}
+\item{normalize}{a logical giving if heuristic data rescaling should be used (default is \code{TRUE}).}
 
-\item{eps}{a double giving the convergence tolerance (default is \code{1e-5}).}
+\item{warm_start}{a logical indicating if a warm_start is provided (default \code{FALSE}, but a call to \code{scs} with a non-null \code{initial} argument overrides it to be effectively \code{TRUE})}
 
-\item{acceleration_lookback}{an integer indicating the number of iterations to look back for Anderson acceleration (default is \code{10L}).}
+\item{acceleration_lookback}{an integer indicating How much memory to use for Anderson acceleration. More memory requires more time to compute but can give more reliable steps (default \code{0L}, disabling it).}
+
+\item{acceleration_interval}{an integer specifying the number of iterations for which Anderson acceleration is run (default \code{1L}).}
+
+\item{adaptive_scale}{a logical indicating whether to heuristically adapt dual through the solve (default \code{TRUE}).}
+
+\item{write_data_filename}{a string indicating filename to write problem data to (default \code{NULL} indicating no write).}
+
+\item{log_csv_filename}{a string indicating filename where SCS will write csv logs of various quantities through the solver (default \code{NULL} indicating no logging, as it makes the solver much slower).}
+
+\item{time_limit_secs}{a double indicating time limit for solve run in seconds; can be fractional (default \code{0.0} indicating no limit).}
 }
 \value{
 a list containing the control parameters.

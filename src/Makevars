@@ -9,7 +9,7 @@ else
   SOLARIS_FLAG=-USOLARIS
 endif
 
-PKG_CFLAGS=$(SOLARIS_FLAG) -I./$(SCS_DIR)/include -DUSE_LAPACK -DCOPYAMATRIX -DUSING_R
+PKG_CFLAGS=$(SOLARIS_FLAG) -I./$(SCS_DIR)/include -DUSE_LAPACK -DCOPYAMATRIX
 PKG_LIBS=-L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 
 $(SHLIB): init.o scsr.o
@@ -19,7 +19,6 @@ scsr.o: scs.ts
 scs.ts:
 	(cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR) && \
 	cp -f $(SCS_MODS_DIR)/rw.c $(SCS_DIR)/src && \
-	cp -f $(SCS_MODS_DIR)/glbopts.h $(SCS_DIR)/include && \
 	(cd $(SCS_DIR) && \
 	($(MAKE) purge && \
 	$(MAKE) out/libscsdir.a CC="$(CC)" CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS) $(SOLARIS_FLAG)" AR="$(AR)" RANLIB="$(RANLIB)")) && \

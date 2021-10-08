@@ -1,5 +1,5 @@
 #!/bin/sh
 
-(cd src/scs && make clean)
+(cd src/scs && make purge)
 rm -f src/scs.so src/*.o src/*.ts src/symbols.rds
 

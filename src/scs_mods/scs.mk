@@ -36,23 +36,26 @@ ifeq ($(UNAME), Darwin)
 LDFLAGS += -lm
 SHARED = dylib
 SONAME = -install_name
-CULDFLAGS = -L/usr/local/cuda/lib
 else
 ifeq ($(ISWINDOWS), 1)
 # we're on windows (cygwin or msys)
 LDFLAGS += -lm
 SHARED = dll
 SONAME = -soname
-#TODO: probably doesn't work:
-CULDFLAGS = -L/usr/local/cuda/lib64
 else
 # we're on a linux system, use accurate timer provided by clock_gettime()
 LDFLAGS += -lm -lrt
 SHARED = so
 SONAME = -soname
-CULDFLAGS = -L/usr/local/cuda/lib64
 endif
 endif
+
+#TODO: check if this works for all platforms:
+ifeq ($(CUDA_PATH), )
+CUDA_PATH=/usr/local/cuda
+endif
+CULDFLAGS = -L$(CUDA_PATH)/lib -L$(CUDA_PATH)/lib64 -lcudart -lcublas -lcusparse
+CUDAFLAGS = $(CFLAGS) -I$(CUDA_PATH)/include -Ilinsys/gpu -Wno-c++11-long-long # turn off annoying long-long warnings in cuda header files
 
 # Add on default CFLAGS
 OPT = -O3
@@ -70,19 +73,16 @@ ifneq ($(ISWINDOWS), 1)
 override CFLAGS += -fPIC
 endif
 
-CULDFLAGS += -lcudart -lcublas -lcusparse
-CUDAFLAGS = $(CFLAGS) -I/usr/local/cuda/include -Wno-c++11-long-long # turn off annoying long-long warnings in cuda header files
-
 LINSYS = linsys
-DIRSRC = $(LINSYS)/direct
-DIRSRCEXT = $(DIRSRC)/external
-INDIRSRC = $(LINSYS)/indirect
-GPU = $(LINSYS)/gpu
+DIRSRC = $(LINSYS)/cpu/direct
+INDIRSRC = $(LINSYS)/cpu/indirect
+GPUDIR = $(LINSYS)/gpu/direct
+GPUINDIR = $(LINSYS)/gpu/indirect
+
+EXTSRC = $(LINSYS)/external
 
 OUT = out
-ifneq ($(ISWINDOWS), 1)
 AR = ar
-endif
 ARFLAGS = rv
 ARCHIVE = $(AR) $(ARFLAGS)
 RANLIB = ranlib
@@ -108,10 +108,6 @@ SFLOAT = 0
 ifneq ($(SFLOAT), 0)
 OPT_FLAGS += -DSFLOAT=$(SFLOAT) # use floats rather than doubles
 endif
-NOVALIDATE = 0
-ifneq ($(NOVALIDATE), 0)
-OPT_FLAGS += -DNOVALIDATE=$(NOVALIDATE)$ # remove data validation step
-endif
 NOTIMER = 0
 ifneq ($(NOTIMER), 0)
 OPT_FLAGS += -DNOTIMER=$(NOTIMER) # no timing, times reported as nan
@@ -120,19 +116,18 @@ COPYAMATRIX = 1
 ifneq ($(COPYAMATRIX), 0)
 OPT_FLAGS += -DCOPYAMATRIX=$(COPYAMATRIX) # if normalize, copy A
 endif
-TEST_GPU_MAT_MUL = 0
-ifneq ($(TEST_GPU_MAT_MUL), 0)
-OPT_FLAGS += -DTEST_GPU_MAT_MUL=$(TEST_GPU_MAT_MUL) # tests GPU matrix multiply for correctness
-endif
 GPU_TRANSPOSE_MAT = 1
 ifneq ($(GPU_TRANSPOSE_MAT), 0)
 OPT_FLAGS += -DGPU_TRANSPOSE_MAT=$(GPU_TRANSPOSE_MAT) # tranpose A mat in GPU memory
 endif
-
-### VERBOSITY LEVELS: 0,1,2
-EXTRA_VERBOSE = 0
-ifneq ($(EXTRA_VERBOSE), 0)
-OPT_FLAGS += -DEXTRA_VERBOSE=$(EXTRA_VERBOSE) # extra verbosity level
+VALIDATE = 1
+ifneq ($(VALIDATE), 0)
+OPT_FLAGS += -DVALIDATE=$(VALIDATE) # perform problem validation or skip
+endif
+### VERBOSITY LEVELS: 0,1,2,...
+VERBOSITY = 0
+ifneq ($(VERBOSITY), 0)
+OPT_FLAGS += -DVERBOSITY=$(VERBOSITY) # verbosity level
 endif
 
 ############ OPENMP: ############

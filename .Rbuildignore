@@ -19,5 +19,6 @@ src/scs/.TODO
 src/scs/.travis.yml
 src/scs/linsys/gpu
 src/scs/linsys/indirect
+inst/tools/*
 Work
 
