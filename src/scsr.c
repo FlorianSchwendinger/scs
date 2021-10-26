@@ -5,6 +5,8 @@
 #include "scs/include/scs.h"
 #include "scs/include/util.h"
 #include "scs/linsys/scs_matrix.h"
+#include "scsr.h"
+
 
 SEXP getListElement(SEXP list, const char *str) {
   SEXP elmt = R_NilValue, names = getAttrib(list, R_NamesSymbol);
@@ -342,3 +344,15 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   UNPROTECT(1);
   return ret;
 }
+
+
+SEXP openmp_get_number_of_threads() {
+  SEXP nthreads;
+  PROTECT(nthreads = allocVector(INTSXP, 1));
+  INTEGER(nthreads)[0] = omp_get_num_threads();
+  UNPROTECT(1);
+  return nthreads;
+}
+
+
+
