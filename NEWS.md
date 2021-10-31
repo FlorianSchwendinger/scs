@@ -1,4 +1,4 @@
-# scs 1.3-2
+# scs 3.0-0
 
 - Set `acceleration_lookback` parameter to (current default) `10L`
   from previous value of `20L`.

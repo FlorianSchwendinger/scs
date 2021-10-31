@@ -1,9 +1,9 @@
 Package: scs
 Version: 3.0-0
 Title: Splitting Conic Solver
-Authors@R: c( person("Florian", "Schwendinger", role = c("ctb", "cre"), email = "FlorianSchwendinger@gmx.at"),
+Authors@R: c( person("Florian", "Schwendinger", role = c("aut", "cre"), email = "FlorianSchwendinger@gmx.at"),
               person("Brendan", "O'Donoghue", role = c("aut", "cph")),
-              person("Balasubramanian", "Narasimhan", role = c("ctb")),
+              person("Balasubramanian", "Narasimhan", role = c("aut")),
               person("Timothy A.", "Davis", role = "cph"),
               person("Patrick R.", "Amestory", role = "cph"),
               person("Iain S.", "Duff", role = "cph"))
