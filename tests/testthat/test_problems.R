@@ -21,25 +21,25 @@ rds_files  <- c(
 info_vars_to_check  <- c(
   "iter",
   "status",
-  "statusVal",
-  "scaleUpdates",
+  "status_val",
+  "scale_updates",
   "pobj",
   "dobj",
-  ## "resPri",
-  ## "resDual",
+  ## "res_pri",
+  ## "res_dual",
   ## "gap",
-  "resInfeas",
-  "resUnbddA",
-  "resUnbddP",
-  ## "setupTime",
-  ## "solveTime",
+  "res_infeas",
+  "res_unbdd_a",
+  "res_unbdd_p",
+  ## "setup_time",
+  ## "solve_time",
   "scale",
-  ## "compSlack",
-  "rejectedAccelSteps",
-  "acceptedAccelSteps"
-  ## "linsysTime",
-  ## "coneTime",
-  ## "accelTime"
+  ## "comp_slack",
+  "rejected_accel_steps",
+  "accepted_accel_steps"
+  ## "lin_sys_time",
+  ## "cone_time",
+  ## "accel_time"
 )
 
 sol_vars_to_check  <- c("x", "y", "s")
