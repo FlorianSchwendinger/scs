@@ -1,3 +1,4 @@
+.git*
 .gitignore
 .Rhistory
 README.html
@@ -21,4 +22,6 @@ src/scs/linsys/gpu
 src/scs/linsys/indirect
 inst/tools/*
 Work
+
+# Remove the citation file to pass checks. It is also in inst/CITATION
 src/scs/CITATION.cff
