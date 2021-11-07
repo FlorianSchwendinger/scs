@@ -220,7 +220,7 @@ SEXP populateInfoR(ScsInfo *info) {
 }
 
 SEXP scsr(SEXP data, SEXP cone, SEXP params) {
-  scs_int len, exit_flag;
+  scs_int len;
   SEXP ret, retnames, infor, xr, yr, sr;
 
   /* allocate memory */
@@ -314,7 +314,7 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   /* solve! */
   /* scs(d, k, sol, info); */
   /* exit_flag is stuffed in info anyway, so ignore... */
-  exit_flag = scs(d, k, stgs, sol, info);
+  scs(d, k, stgs, sol, info);
 
   PROTECT(infor = populateInfoR(info)); /* count = 1 */
 
