@@ -21,4 +21,4 @@ src/scs/linsys/gpu
 src/scs/linsys/indirect
 inst/tools/*
 Work
-
+src/scs/CITATION.cff
