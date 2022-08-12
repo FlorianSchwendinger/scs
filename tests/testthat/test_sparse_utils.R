@@ -1,4 +1,5 @@
 ## Some tests for utils
+# Removed this test from the build via .Rbuildignore since Matrix pkg will change.
 
 s <- Matrix::sparseMatrix(i = c(2,4,3:5), j= c(4,7:5,5), x = 1:5, dims = c(7,7), symmetric = TRUE)
 
