@@ -45,7 +45,7 @@ info_vars_to_check  <- c(
 sol_vars_to_check  <- c("x", "y", "s")
 
 for (fname in rds_files) {
-  d  <- readRDS(file.path("problem_results", fname))
+  d <- readRDS(file.path("problem_results", fname))
   test_that(sprintf("Checking results for %s", fname), {
     sol <- scs(A = d$data$A, P = d$data$P, b = d$data$b, obj = d$data$obj, cone = d$cone, control = d$settings)
     if (fname ==   "random_prob.RDS") { ## Need lenient tolerance

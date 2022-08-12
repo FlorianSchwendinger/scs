@@ -1,7 +1,8 @@
 .git*
 .gitignore
 .Rhistory
-README.html
+^README.html
+^Makefile
 src/build_makevars.R
 src/Makevars_unix
 src/Makevars.win_win
@@ -21,7 +22,9 @@ src/scs/.travis.yml
 src/scs/linsys/gpu
 src/scs/linsys/indirect
 inst/tools/*
-Work
+
+tests/testthat/test_sparse_utils.R
+tests/testthat/test_problems.R
 
 # Remove the citation file to pass checks. It is also in inst/CITATION
 src/scs/CITATION.cff

@@ -1,5 +1,4 @@
 library(testthat)
 library(scs)
 library(slam)
-library(Matrix)
 test_check("scs")
