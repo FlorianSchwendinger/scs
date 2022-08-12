@@ -9,8 +9,8 @@
 #include "scs_matrix.h"
 #include "util.h"
 
-#define FREAD(a, b, c, d) if ( fread((a), (b), (c), (d)) != (b) ) scs_printf("error reading data\n")
-#define FWRITE(a, b, c, d) if ( fwrite((a), (b), (c), (d)) != (b) ) scs_printf("error writing data\n")
+#define FREAD(a, b, c, d) if ( fread((a), (b), (c), (d)) != (c) ) scs_printf("error reading data\n")
+#define FWRITE(a, b, c, d) if ( fwrite((a), (b), (c), (d)) != (c) ) scs_printf("error writing data\n")
 
 /* writes/reads problem data to/from filename */
 /* This is a VERY naive implementation, doesn't care about portability etc */

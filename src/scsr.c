@@ -31,6 +31,16 @@ SEXP floatVec2R(scs_int n, scs_float *in) {
   return ret;
 }
 
+const char *getStrFromListWithDefault(SEXP list, const char *str,
+				      const char *def) {
+  SEXP val = getListElement(list, str);
+  if (val == R_NilValue) {
+    return def;
+  }
+  val = coerceVector(val, STRSXP);
+  return CHAR(STRING_ELT(val, 0));
+}
+
 scs_float getFloatFromListWithDefault(SEXP list, const char *str,
                                       scs_float def) {
   SEXP val = getListElement(list, str);
@@ -93,13 +103,13 @@ SEXP populateInfoR(ScsInfo *info) {
   
   PROTECT(statusVal_r = allocVector(INTSXP, 1));
   INTEGER(statusVal_r)[0] = info->status_val;
-  SET_STRING_ELT(info_names, 2, mkChar("statusVal"));
+  SET_STRING_ELT(info_names, 2, mkChar("status_val"));
   SET_VECTOR_ELT(infor, 2, statusVal_r);
   UNPROTECT(1);
 
   PROTECT(scaleUpdates_r = allocVector(INTSXP, 1));
   INTEGER(scaleUpdates_r)[0] = info->scale_updates;
-  SET_STRING_ELT(info_names, 3, mkChar("scaleUpdates"));
+  SET_STRING_ELT(info_names, 3, mkChar("scale_updates"));
   SET_VECTOR_ELT(infor, 3, scaleUpdates_r);
   UNPROTECT(1);
   
@@ -117,13 +127,13 @@ SEXP populateInfoR(ScsInfo *info) {
   
   PROTECT(resPri_r = allocVector(REALSXP, 1));
   REAL(resPri_r)[0] = info->res_pri;
-  SET_STRING_ELT(info_names, 6, mkChar("resPri"));
+  SET_STRING_ELT(info_names, 6, mkChar("res_pri"));
   SET_VECTOR_ELT(infor, 6, resPri_r);
   UNPROTECT(1);
   
   PROTECT(resDual_r = allocVector(REALSXP, 1));
   REAL(resDual_r)[0] = info->res_dual;
-  SET_STRING_ELT(info_names, 7, mkChar("resDual"));
+  SET_STRING_ELT(info_names, 7, mkChar("res_dual"));
   SET_VECTOR_ELT(infor, 7, resDual_r);
   UNPROTECT(1);
 
@@ -135,31 +145,31 @@ SEXP populateInfoR(ScsInfo *info) {
   
   PROTECT(resInfeas_r = allocVector(REALSXP, 1));
   REAL(resInfeas_r)[0] = info->res_infeas;
-  SET_STRING_ELT(info_names, 9, mkChar("resInfeas"));
+  SET_STRING_ELT(info_names, 9, mkChar("res_infeas"));
   SET_VECTOR_ELT(infor, 9, resInfeas_r);
   UNPROTECT(1);
   
   PROTECT(resUnbddA_r = allocVector(REALSXP, 1));
   REAL(resUnbddA_r)[0] = info->res_unbdd_a;
-  SET_STRING_ELT(info_names, 10, mkChar("resUnbddA"));
+  SET_STRING_ELT(info_names, 10, mkChar("res_unbdd_a"));
   SET_VECTOR_ELT(infor, 10, resUnbddA_r);
   UNPROTECT(1);
 
   PROTECT(resUnbddP_r = allocVector(REALSXP, 1));
   REAL(resUnbddP_r)[0] = info->res_unbdd_p;
-  SET_STRING_ELT(info_names, 11, mkChar("resUnbddP"));
+  SET_STRING_ELT(info_names, 11, mkChar("res_unbdd_p"));
   SET_VECTOR_ELT(infor, 11, resUnbddP_r);
   UNPROTECT(1);
   
   PROTECT(setupTime_r = allocVector(REALSXP, 1));
   REAL(setupTime_r)[0] = info->setup_time;
-  SET_STRING_ELT(info_names, 12, mkChar("setupTime"));
+  SET_STRING_ELT(info_names, 12, mkChar("setup_time"));
   SET_VECTOR_ELT(infor, 12, setupTime_r);
   UNPROTECT(1);
   
   PROTECT(solveTime_r = allocVector(REALSXP, 1));
   REAL(solveTime_r)[0] = info->solve_time;
-  SET_STRING_ELT(info_names, 13, mkChar("solveTime"));
+  SET_STRING_ELT(info_names, 13, mkChar("solve_time"));
   SET_VECTOR_ELT(infor, 13, solveTime_r);
   UNPROTECT(1);
 
@@ -171,37 +181,37 @@ SEXP populateInfoR(ScsInfo *info) {
 
   PROTECT(compSlack_r = allocVector(REALSXP, 1));
   REAL(compSlack_r)[0] = info->comp_slack;
-  SET_STRING_ELT(info_names, 15, mkChar("compSlack"));
+  SET_STRING_ELT(info_names, 15, mkChar("comp_slack"));
   SET_VECTOR_ELT(infor, 15, compSlack_r);
   UNPROTECT(1);
   
   PROTECT(rejectedAccelSteps_r = allocVector(INTSXP, 1));
   INTEGER(rejectedAccelSteps_r)[0] = info->rejected_accel_steps;
-  SET_STRING_ELT(info_names, 16, mkChar("rejectedAccelSteps"));
+  SET_STRING_ELT(info_names, 16, mkChar("rejected_accel_steps"));
   SET_VECTOR_ELT(infor, 16, rejectedAccelSteps_r);
   UNPROTECT(1);
 
   PROTECT(acceptedAccelSteps_r = allocVector(INTSXP, 1));
   INTEGER(acceptedAccelSteps_r)[0] = info->accepted_accel_steps;
-  SET_STRING_ELT(info_names, 17, mkChar("acceptedAccelSteps"));
+  SET_STRING_ELT(info_names, 17, mkChar("accepted_accel_steps"));
   SET_VECTOR_ELT(infor, 17, acceptedAccelSteps_r);
   UNPROTECT(1);
 
   PROTECT(linsysTime_r = allocVector(REALSXP, 1));
   REAL(linsysTime_r)[0] = info->lin_sys_time;
-  SET_STRING_ELT(info_names, 18, mkChar("linsysTime"));
+  SET_STRING_ELT(info_names, 18, mkChar("lin_sys_time"));
   SET_VECTOR_ELT(infor, 18, linsysTime_r);
   UNPROTECT(1);
 
   PROTECT(coneTime_r = allocVector(REALSXP, 1));
   REAL(coneTime_r)[0] = info->cone_time;
-  SET_STRING_ELT(info_names, 19, mkChar("coneTime"));
+  SET_STRING_ELT(info_names, 19, mkChar("cone_time"));
   SET_VECTOR_ELT(infor, 19, coneTime_r);
   UNPROTECT(1);
   
   PROTECT(accelTime_r = allocVector(REALSXP, 1));
   REAL(accelTime_r)[0] = info->accel_time;
-  SET_STRING_ELT(info_names, 20, mkChar("accelTime"));
+  SET_STRING_ELT(info_names, 20, mkChar("accel_time"));
   SET_VECTOR_ELT(infor, 20, accelTime_r);
   UNPROTECT(1);
 
@@ -210,7 +220,7 @@ SEXP populateInfoR(ScsInfo *info) {
 }
 
 SEXP scsr(SEXP data, SEXP cone, SEXP params) {
-  scs_int len, exit_flag;
+  scs_int len;
   SEXP ret, retnames, infor, xr, yr, sr;
 
   /* allocate memory */
@@ -263,8 +273,10 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
 							  ACCELERATION_INTERVAL);
   stgs->adaptive_scale = getIntFromListWithDefault(params, "adaptive_scale", ADAPTIVE_SCALE);
   /* Without this nulling out, things bomb! */
-  stgs->write_data_filename = NULL;
-  stgs->log_csv_filename = NULL;
+  /* stgs->write_data_filename = NULL; */
+  /* stgs->log_csv_filename = NULL; */
+  stgs->write_data_filename = getStrFromListWithDefault(params, "write_data_filename", (char *) NULL);
+  stgs->log_csv_filename = getStrFromListWithDefault(params, "log_csv_filename", (char *) NULL);
   stgs->time_limit_secs = getFloatFromListWithDefault(params, "time_limit_secs", TIME_LIMIT_SECS);
 
   /* Warm start data consists of x, y, s from previous solution and need to be stuffed into */
@@ -302,7 +314,7 @@ SEXP scsr(SEXP data, SEXP cone, SEXP params) {
   /* solve! */
   /* scs(d, k, sol, info); */
   /* exit_flag is stuffed in info anyway, so ignore... */
-  exit_flag = scs(d, k, stgs, sol, info);
+  scs(d, k, stgs, sol, info);
 
   PROTECT(infor = populateInfoR(info)); /* count = 1 */
 
