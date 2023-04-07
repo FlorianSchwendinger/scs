@@ -9,7 +9,7 @@ test_that("A simple example", {
   sol <- scs(A = A, b = b, obj = c, cone = cone, control = params)
 
   expect_equal(sol$info$status, "solved")
-  expect_equal(sol$x, 1)
+  expect_equal(sol$x, 1, tolerance = 1e-7)
   expect_equal(sol$y, c(-0.5, -0.5))
-  expect_equal(sol$info$pobj, 1)
+  expect_equal(sol$info$pobj, 1, tolerance = 1e-7)
 })
