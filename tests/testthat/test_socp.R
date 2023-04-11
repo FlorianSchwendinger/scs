@@ -9,6 +9,6 @@ test_that("An SOCP Test", {
   sol <- scs(A = A, b = rhs, obj = obj, cone = cone)
   expect_equal(sol$info$status, "solved")
   expect_equal(sol$x, c(sqrt(2), -1, -1), tolerance = 1e-7)
-  expect_equal(sol$info$pobj, -0.5857864, tol = 1e-5)
-  expect_equal(sol$info$dobj, -0.5857864, tol = 1e-5)
+  expect_equal(sol$info$pobj, -0.5857864, tolerance = 1e-5)
+  expect_equal(sol$info$dobj, -0.5857864, tolerance = 1e-5)
 })
