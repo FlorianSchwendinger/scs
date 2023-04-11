@@ -23,8 +23,5 @@ src/scs/linsys/gpu
 src/scs/linsys/indirect
 inst/tools/*
 
-tests/testthat/test_sparse_utils.R
-tests/testthat/test_problems.R
-
 # Remove the citation file to pass checks. It is also in inst/CITATION
 src/scs/CITATION.cff
