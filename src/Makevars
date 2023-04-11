@@ -11,6 +11,7 @@ scsr.o: scs.ts
 scs.ts:
 	(cp -f $(SCS_MODS_DIR)/rw.c $(SCS_MODS_DIR)/scs.c $(SCS_DIR)/src && \
 	cp -f $(SCS_MODS_DIR)/private.c $(SCS_DIR)/linsys/cpu/direct && \
+	cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR) && \
 	(cd $(SCS_DIR) && \
 	($(MAKE) purge && \
 	$(MAKE) out/libscsdir.a CC="$(CC)" CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS) $(SOLARIS_FLAG)" AR="$(AR)" RANLIB="$(RANLIB)")) && \

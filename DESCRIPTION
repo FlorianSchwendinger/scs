@@ -1,5 +1,5 @@
 Package: scs
-Version: 3.2.3
+Version: 3.2.4
 Title: Splitting Conic Solver
 Authors@R: c( person("Florian", "Schwendinger", role = c("aut", "cre"), email = "FlorianSchwendinger@gmx.at"),
               person("Brendan", "O'Donoghue", role = c("aut", "cph")),
