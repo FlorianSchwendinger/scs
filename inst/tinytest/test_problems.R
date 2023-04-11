@@ -1,4 +1,4 @@
-context("Saved Problems")
+## "Saved Problems"
 
 rds_files  <- c(
   "degenerate1.RDS",
@@ -48,10 +48,6 @@ sol_vars_to_check  <- c("x", "y", "s")
 for (fname in rds_files) {
   d <- readRDS(file.path("problem_results", fname))
   sol <- scs(A = d$data$A, P = d$data$P, b = d$data$b, obj = d$data$obj, cone = d$cone, control = d$settings)
-  test_that(sprintf("Saved %s returned info from scs matches", fname), 
-            expect_equal(sol$info[info_vars_to_check], d$sol$info[info_vars_to_check], tolerance = d$settings$eps_abs)
-            )
-  test_that(sprintf("Saved %s solution from scs matches", fname), 
-            expect_equal(sol[sol_vars_to_check], d$sol[sol_vars_to_check], tolerance = d$settings$eps_abs)
-            )
+  expect_equal(sol$info[info_vars_to_check], d$sol$info[info_vars_to_check], tolerance = d$settings$eps_abs)
+  expect_equal(sol[sol_vars_to_check], d$sol[sol_vars_to_check], tolerance = d$settings$eps_abs)
 }
