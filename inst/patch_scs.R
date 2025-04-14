@@ -31,4 +31,8 @@ for (i in seq_along(smatches)) {
 writeLines(src, file)
 
 
-
+# Replace build flags
+file <- "src/scs/scs.mk"
+src <- readLines(file)
+src <- gsub(" -Wwrite-strings", "", src, fixed = TRUE)
+writeLines(src, file)

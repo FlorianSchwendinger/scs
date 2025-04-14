@@ -27,3 +27,6 @@ inst/tools/*
 
 # Remove the citation file to pass checks. It is also in inst/CITATION
 src/scs/CITATION.cff
+
+Taskfile.yml
+scs_*.tar.gz
