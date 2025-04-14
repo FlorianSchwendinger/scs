@@ -1,0 +1,67 @@
+version: '3'
+
+
+vars:
+  R_DEV: "/opt/R/R460/lib/R/bin/R"
+
+tasks:
+  build:
+    cmds:
+      - R CMD build .
+
+  inst:
+    cmds:
+      - task build
+      - R CMD INSTALL scs_*.tar.gz
+
+  check:
+    cmds:
+      - task build
+      - R CMD check scs_*.tar.gz
+
+  cran_check:
+    cmds:
+      - task build
+      - R CMD check --as-cran scs_*.tar.gz
+
+  dev_build:
+    cmds:
+      - "{{.R_DEV}} CMD build ."
+    
+  dev_inst:
+    cmds:
+      - task dev_build
+      - "{{.R_DEV}} CMD INSTALL scs_*.tar.gz"
+
+  dev_check:
+    cmds:
+      - task dev_build
+      - "{{.R_DEV}} CMD check scs_*.tar.gz"
+
+  readme:
+    cmds:
+      - R -e 'rmarkdown::render("README.Rmd", clean = FALSE)'
+      - pandoc README.md -s --highlight-style=pygments -o README.html
+
+  manual:
+    cmds:
+      - task clean
+      - R CMD Rd2pdf --output=Manual.pdf .
+
+  clean:
+    cmds:
+      - rm -f Manual.pdf
+      - rm -rf .Rd2pdf*
+      - rm -rf scs.Rcheck
+      - rm -f scs_*.tar.gz
+
+  winbuilder_check_devel:
+    cmds:
+      - task build
+      - R -e "devtools::check_win_devel(email = 'FlorianSchwendinger@gmx.at')"
+
+  rhub:
+    cmds:
+      - R -e 'rhub::rhub_check(platforms = c("linux", "m1-san", "macos", "macos-arm64", "windows", "clang20", "gcc-asan", "rchk", "valgrind"))'
+
+

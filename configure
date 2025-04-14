@@ -1,0 +1,14 @@
+
+
+: ${R_HOME=`R RHOME`}
+if test -z "${R_HOME}"; then
+    echo "'R_HOME' could not be found!"
+    exit 1
+fi
+
+
+export R_INCLUDE_DIR=`"${R_HOME}/bin/Rscript" -e 'writeLines(R.home("include"))'`
+
+
+# Patch code so it fits CRAN regulations.
+${R_HOME}/bin/R --silent --vanilla -f ./inst/patch_scs.R
