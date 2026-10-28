@@ -1,11 +1,11 @@
 Package: scs
-Version: 3.2.7
+Version: 3.3.1
 Title: Splitting Conic Solver
 Authors@R: c( person("Florian", "Schwendinger", role = c("aut", "cre"), email = "FlorianSchwendinger@gmx.at"),
               person("Brendan", "O'Donoghue", role = c("aut", "cph")),
               person("Balasubramanian", "Narasimhan", role = c("aut")),
               person("Timothy A.", "Davis", role = "cph"),
-              person("Patrick R.", "Amestory", role = "cph"),
+              person("Patrick R.", "Amestoy", role = "cph"),
               person("Iain S.", "Duff", role = "cph"))
 Description: Solves convex cone programs via operator splitting. Can solve:
     linear programs ('LPs'), second-order cone programs ('SOCPs'), semidefinite programs
@@ -13,11 +13,11 @@ Description: Solves convex cone programs via operator splitting. Can solve:
     problems with any combination of those cones. 'SCS' uses 'AMD' (a set of routines for permuting sparse matrices prior to factorization) and 'LDL' (a sparse 'LDL' factorization and solve package) from 'SuiteSparse' (<https://people.engr.tamu.edu/davis/suitesparse.html>).
 Depends: R (>= 3.5.0)
 SystemRequirements: GNU Make
-Suggests: 
+Suggests:
     Matrix,
     slam,
     tinytest
 Encoding: UTF-8
 License: GPL-3
 URL: https://github.com/FlorianSchwendinger/scs
-RoxygenNote: 7.2.0
+Config/roxygen2/version: 8.1.1

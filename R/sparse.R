@@ -16,7 +16,11 @@ make_csc_matrix <- function(x) UseMethod("make_csc_matrix")
 make_csc_matrix.matrix <- function(x) {
     if(!is.matrix(x))
         stop("Argument 'x' must be a matrix.")
+    if (anyNA(x))
+        stop("the matrix must not contain NA values")
 
+    ## which(arr.ind = TRUE) returns the entries in column-major order,
+    ## which is exactly CSC order.
     ind <- which(x != 0, arr.ind = TRUE)
     list(matbeg = c(0L, cumsum(tabulate(ind[, 2L], ncol(x)))),
          matind = ind[, 1] - 1L,
@@ -36,28 +40,49 @@ make_csc_matrix.simple_triplet_matrix <- function(x) {
          values = x$v[ind])
 }
 
-## Added by @bnaras for sparse symmetric matrix.
+## Upper triangle of a symmetric matrix in CSC form, for SCS's P.
+## Added by @bnaras; rewritten for the 3.3.1 release: the triplet method
+## added 1 to indices that are already 1-based and neither method reordered
+## the values along with the indices.
+
+## 1-based triplets (i, j, v) -> CSC with 0-based row indices, entries sorted
+## by column then row, values permuted alongside.
+csc_from_triplets <- function(i, j, v, ncol) {
+    ord <- order(j, i)
+    list(matbeg = c(0L, cumsum(tabulate(j[ord], ncol))),
+         matind = as.integer(i[ord]) - 1L,
+         values = v[ord])
+}
 
 make_csc_symm_matrix <- function(m) UseMethod("make_csc_symm_matrix")
 
 make_csc_symm_matrix.matrix  <- function(m) {
-  ind <- which(m!=0 ,arr.ind = TRUE)
-  ind  <- ind[ind[, 1] <= ind[, 2], ] ## keep upper part only
-  values  <- m[ind]
-  x  <- list(i = ind[, 1], j = ind[, 2])  ## triplet form
-  ind  <- order(x$j, x$i)  ## may not be needed
-  list(matbeg = c(0L, cumsum(tabulate(x$j[ind], ncol(m)))),
-       matind = x$i[ind] - 1L,
-       values = values)
+    if (anyNA(m))
+        stop("'P' must not contain NA values")
+    ind <- which(m != 0, arr.ind = TRUE)
+    ind <- ind[ind[, 1L] <= ind[, 2L], , drop = FALSE] ## keep upper part only
+    csc_from_triplets(ind[, 1L], ind[, 2L], m[ind], ncol(m))
 }
 
 make_csc_symm_matrix.simple_triplet_matrix  <- function(m) {
-  ind <- which(m$i <= m$j)
-  x <- list(i = m$i[ind] + 1L, j = m$j[ind] + 1L) ##make it 1-based
-  values <- m$v[ind]
-  ind  <- order(x$j, x$i)  ## may not be needed
-  list(matbeg = c(0L, cumsum(tabulate(x$j[ind], m$ncol))),
-       matind = x$i[ind] - 1L,
-       values = values)
+    keep <- m$i <= m$j  ## slam indices are 1-based already
+    csc_from_triplets(m$i[keep], m$j[keep], m$v[keep], m$ncol)
+}
+
+## From the slots of a CsparseMatrix (0-based i, p; values x; n columns) to
+## the upper-triangle CSC that SCS expects. With transpose = TRUE the stored
+## entries are the lower triangle of a symmetric matrix (dsCMatrix with
+## uplo = "L") and are mirrored; otherwise entries below the diagonal are
+## dropped (a full symmetric dgCMatrix, or one already upper triangular).
+make_csc_upper_from_csc <- function(i, p, x, n, transpose = FALSE) {
+    j <- rep.int(seq_len(n), diff(p))  ## 1-based column of every entry
+    i <- i + 1L
+    if (transpose) {
+        tmp <- i; i <- j; j <- tmp
+    } else {
+        keep <- i <= j
+        i <- i[keep]; j <- j[keep]; x <- x[keep]
+    }
+    csc_from_triplets(i, j, x, n)
 }
 

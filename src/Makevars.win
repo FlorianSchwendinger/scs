@@ -1,15 +1,16 @@
-SCS_DIR=scs
-SCS_MODS_DIR=scs_mods
+SCS_DIR = scs
+SCS_MODS_DIR = scs_mods
 
-PKG_CFLAGS=-I./$(SCS_DIR)/include -I${R_INCLUDE_DIR} -DUSE_LAPACK -DCOPYAMATRIX -DR_LANG
-PKG_LIBS=-L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+# See src/Makevars for the meaning of each flag and of the copy step.
+PKG_CFLAGS = -I./$(SCS_DIR)/include -I$(R_INCLUDE_DIR) -DUSE_LAPACK -DR_LANG
+PKG_LIBS = -L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 
 $(SHLIB): init.o scsr.o
 
-scsr.o: scsr.ts
+scsr.o: scs.ts
 
-scsr.ts:
-	cp -f $(SCS_MODS_DIR)/rw.c $(SCS_MODS_DIR)/scs.c $(SCS_DIR)/src
-	cp -f $(SCS_MODS_DIR)/private.c $(SCS_DIR)/linsys/cpu/direct
+scs.ts:
+	cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR)
+	cp -f $(SCS_MODS_DIR)/cones.c $(SCS_DIR)/src
 	cd $(SCS_DIR) && CC="$(CC)" CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS)" AR="$(AR)" RANLIB="$(RANLIB)" $(MAKE) out/libscsdir.a
 	touch $@

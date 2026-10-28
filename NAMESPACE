@@ -2,4 +2,5 @@
 
 export(scs)
 export(scs_control)
+export(scs_version)
 useDynLib(scs, .registration = TRUE)
