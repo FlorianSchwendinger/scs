@@ -7,7 +7,10 @@
 scs(A, b, obj, P = NULL, cone, initial = NULL, control = scs_control())
 }
 \arguments{
-\item{A}{a matrix of constraint coefficients.
+\item{A}{a matrix of constraint coefficients: a base \code{matrix}, a
+\code{dgCMatrix} from package \pkg{Matrix}, or a
+\code{simple_triplet_matrix} from package \pkg{slam}. Other
+\pkg{Matrix} classes must be converted by the caller.
 \bold{NOTE:} The rows of matrix A have to be ordered according to the
 order given in subsection \dQuote{Allowed cone parameters}. For more information see \bold{README}.}
 
@@ -15,7 +18,10 @@ order given in subsection \dQuote{Allowed cone parameters}. For more information
 
 \item{obj}{a numeric vector giving the primal objective}
 
-\item{P}{a symmetric positive semidefinite matrix, default \code{NULL}}
+\item{P}{a symmetric positive semidefinite matrix: a base \code{matrix},
+a \code{dsCMatrix} (either triangle stored) or \code{dgCMatrix}
+from package \pkg{Matrix}, or a \code{simple_triplet_matrix}. Only
+the upper triangle is used. Default \code{NULL}.}
 
 \item{cone}{a list giving the cone sizes}
 
@@ -24,7 +30,9 @@ order given in subsection \dQuote{Allowed cone parameters}. For more information
 \item{control}{a list giving the control parameters. For more information see \bold{README}.}
 }
 \value{
-list of solution vectors x, y, s and information about run
+A list with the solution vectors \code{x}, \code{y}, \code{s} and
+  a list \code{info} describing the run, see section \dQuote{Return
+  information}.
 }
 \description{
 Solves convex cone programs via operator splitting.
@@ -34,15 +42,17 @@ Solves convex cone programs via operator splitting.
 The order of the rows in matrix \eqn{A} has to correspond to the order given in
 the table \dQuote{Cone Arguments}, which means means rows corresponding to
 \emph{primal zero cones} should be first, rows corresponding to \emph{non-negative cones} second,
-rows corresponding to \emph{second-order cone} third, rows corresponding to \emph{positive semidefinite cones} fourth,
-rows corresponding to \emph{exponential cones} fifth and rows corresponding to \emph{power cones} at last.
+rows corresponding to \emph{box cones} third, rows corresponding to \emph{second-order cones} fourth,
+rows corresponding to \emph{positive semidefinite cones} fifth, rows corresponding to
+\emph{complex positive semidefinite cones} sixth, rows corresponding to \emph{exponential cones}
+seventh and rows corresponding to \emph{power cones} at last.
 }
 
 \subsection{SCS can solve}{
 \enumerate{
   \item linear programs (LPs)
   \item second-order cone programs (SOCPs)
-  \item semidefinite programs (SDPs)
+  \item semidefinite programs (SDPs), real and complex
   \item exponential cone programs (ECPs)
   \item power cone programs (PCPs)
   \item problems with any combination of cones, which can be defined by the parameters listed in the subsection \dQuote{Allowed cone parameters}
@@ -54,15 +64,48 @@ rows corresponding to \emph{exponential cones} fifth and rows corresponding to \
    \tab \code{z}         \tab integer     \tab \eqn{1}       \tab number of primal zero cones (dual free cones),       \cr
    \tab                  \tab             \tab               \tab which corresponds to the primal equality constraints \cr
    \tab \code{l}         \tab integer     \tab \eqn{1}       \tab number of linear cones (non-negative cones)          \cr
-   \tab \code{bsize}     \tab integer     \tab \eqn{1}       \tab size of box cone                                     \cr
-   \tab \code{bl}        \tab numeric     \tab \eqn{bsize-1} \tab lower limit for box cone                             \cr
-   \tab \code{bu}        \tab numeric     \tab \eqn{bsize-1} \tab upper limit for box cone                             \cr
+   \tab \code{bsize}     \tab integer     \tab \eqn{1}       \tab size of box cone (number of bounds plus one);        \cr
+   \tab                  \tab             \tab               \tab defaults to \code{length(bl) + 1} when omitted       \cr
+   \tab \code{bl}        \tab numeric     \tab \eqn{bsize-1} \tab lower limits for box cone (may be \code{-Inf})       \cr
+   \tab \code{bu}        \tab numeric     \tab \eqn{bsize-1} \tab upper limits for box cone (may be \code{Inf})        \cr
    \tab \code{q}         \tab integer     \tab \eqn{\geq1}   \tab vector of second-order cone sizes                    \cr
    \tab \code{s}         \tab integer     \tab \eqn{\geq1}   \tab vector of positive semidefinite cone sizes           \cr
+   \tab \code{cs}        \tab integer     \tab \eqn{\geq1}   \tab vector of complex positive semidefinite cone sizes   \cr
    \tab \code{ep}        \tab integer     \tab \eqn{1}       \tab number of primal exponential cones                   \cr
    \tab \code{ed}        \tab integer     \tab \eqn{1}       \tab number of dual exponential cones                     \cr
    \tab \code{p}         \tab numeric     \tab \eqn{\geq1}   \tab vector of primal/dual power cone parameters
-} }
+}
+A real positive semidefinite cone of order \eqn{k} occupies \eqn{k(k+1)/2}
+rows (lower triangle, column-wise, off-diagonal entries scaled by
+\eqn{\sqrt{2}}); a complex positive semidefinite cone of order \eqn{k}
+occupies \eqn{k^2} rows (real and imaginary parts of the lower triangle,
+same scaling). The experimental spectral cones of the SCS C library
+(log-determinant, nuclear norm, \eqn{\ell_1}, sum of largest eigenvalues)
+are not compiled into this package. The redundant length fields
+\code{qsize}, \code{ssize}, \code{cssize} and \code{psize} are accepted
+for backward compatibility and must equal the length of the vector they
+describe.
+}
+
+\subsection{Return information}{
+\code{info} is a list with the elements \code{iter}, \code{status},
+\code{lin_sys_solver}, \code{status_val}, \code{scale_updates},
+\code{pobj}, \code{dobj}, \code{res_pri}, \code{res_dual}, \code{gap},
+\code{res_infeas}, \code{res_unbdd_a}, \code{res_unbdd_p},
+\code{setup_time}, \code{solve_time} (milliseconds), \code{scale},
+\code{comp_slack}, \code{rejected_accel_steps},
+\code{accepted_accel_steps}, \code{aa_stats}, \code{lin_sys_time},
+\code{cone_time} and \code{accel_time} (milliseconds).
+\code{status_val} is the SCS exit flag: \code{1} solved, \code{2} solved
+inaccurately, \code{-1} unbounded, \code{-2} infeasible, \code{-4} failed,
+\code{-5} interrupted, \code{-6} unbounded inaccurately, \code{-7}
+infeasible inaccurately. \code{aa_stats} is a list of Anderson
+acceleration diagnostics: \code{iter}, \code{n_accept},
+\code{n_reject_lapack}, \code{n_reject_rank0}, \code{n_reject_nonfinite},
+\code{n_reject_weight_cap}, \code{n_safeguard_reject}, \code{last_rank},
+\code{last_aa_norm} (\code{NaN} if no acceleration step was attempted)
+and \code{last_regularization}.
+}
 }
 \examples{
 A <- matrix(c(1, 1), ncol=1)

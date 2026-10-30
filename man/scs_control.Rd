@@ -15,12 +15,16 @@ scs_control(
   verbose = FALSE,
   normalize = TRUE,
   warm_start = FALSE,
-  acceleration_lookback = 0L,
-  acceleration_interval = 1L,
+  acceleration_lookback = 10L,
+  acceleration_interval = 5L,
   adaptive_scale = TRUE,
   write_data_filename = NULL,
   log_csv_filename = NULL,
-  time_limit_secs = 0
+  time_limit_secs = 0,
+  adaptive_diag_scale = TRUE,
+  acceleration_type_1 = TRUE,
+  acceleration_regularization = 1e-08,
+  acceleration_relaxation = 1
 )
 }
 \arguments{
@@ -34,31 +38,41 @@ scs_control(
 
 \item{alpha}{a double giving the (Douglas-Rachford) over-relaxation parameter, allowed values are in (0, 2) (default \code{1.5}).}
 
-\item{rho_x}{a double giving the momentum of x term (default os \code{1e-6}).}
+\item{rho_x}{a double giving the primal scale factor (default \code{1e-6}).}
 
-\item{scale}{a double giving the factor (default is \code{1.0}) by which the data is rescaled (only used if normalize is \code{TRUE}).}
+\item{scale}{a double giving the initial dual scale factor (default \code{0.1}), updated during the solve if \code{adaptive_scale} is \code{TRUE}.}
 
 \item{verbose}{a logical giving if the progress should be printed (default is \code{FALSE}).}
 
 \item{normalize}{a logical giving if heuristic data rescaling should be used (default is \code{TRUE}).}
 
-\item{warm_start}{a logical indicating if a warm_start is provided (default \code{FALSE}, but a call to \code{scs} with a non-null \code{initial} argument overrides it to be effectively \code{TRUE})}
+\item{warm_start}{a logical indicating if a warm_start is provided (default \code{FALSE}; a call to \code{scs} with a non-null \code{initial} argument overrides it to be effectively \code{TRUE}).}
 
-\item{acceleration_lookback}{an integer indicating How much memory to use for Anderson acceleration. More memory requires more time to compute but can give more reliable steps (default \code{0L}, disabling it).}
+\item{acceleration_lookback}{a non-negative integer giving how much memory to use for Anderson acceleration (AA). More memory requires more time to compute but can give more reliable steps; \code{0L} disables acceleration (default \code{10L}). The AA type is chosen by \code{acceleration_type_1}; a negative value, which earlier SCS versions read as a request for type-II AA, is an error.}
 
-\item{acceleration_interval}{an integer specifying the number of iterations for which Anderson acceleration is run (default \code{1L}).}
+\item{acceleration_interval}{an integer; AA is applied every \code{acceleration_interval} iterations (default \code{5L}).}
 
-\item{adaptive_scale}{a logical indicating whether to heuristically adapt dual through the solve (default \code{TRUE}).}
+\item{adaptive_scale}{a logical indicating whether to heuristically adapt the dual scale through the solve (default \code{TRUE}).}
 
 \item{write_data_filename}{a string indicating filename to write problem data to (default \code{NULL} indicating no write).}
 
 \item{log_csv_filename}{a string indicating filename where SCS will write csv logs of various quantities through the solver (default \code{NULL} indicating no logging, as it makes the solver much slower).}
 
 \item{time_limit_secs}{a double indicating time limit for solve run in seconds; can be fractional (default \code{0.0} indicating no limit).}
+
+\item{adaptive_diag_scale}{a logical indicating whether to refine the scaling metric per row from the primal residual profile; requires \code{adaptive_scale} and is silently disabled without it (default \code{TRUE}).}
+
+\item{acceleration_type_1}{a logical; \code{TRUE} selects type-I AA, \code{FALSE} type-II, which is more stable but typically slower and is usually run with a smaller \code{acceleration_regularization} such as \code{1e-12} (default \code{TRUE}).}
+
+\item{acceleration_regularization}{a double giving the Tikhonov regularization of the AA least-squares solve. A positive value is scaled by the Frobenius norms of the AA matrices, a negative value pins the absolute regularization at \code{-acceleration_regularization}, and \code{0} disables regularization (default \code{1e-8}).}
+
+\item{acceleration_relaxation}{a double in \eqn{[0, 2]} giving the AA relaxation factor; \code{1.0} is vanilla AA (default \code{1.0}).}
 }
 \value{
 a list containing the control parameters.
 }
 \description{
-Details to the \emph{control} parameters.
+Details to the \emph{control} parameters. The defaults are
+  those of the bundled SCS C library (see \code{\link{scs_version}}),
+  except \code{verbose}, which is \code{FALSE} here.
 }

@@ -1,32 +1,33 @@
-.git*
-.gitignore
-.vscode
-.Rhistory
-^README.html
-^Makefile
-src/build_makevars.R
-src/Makevars_unix
-src/Makevars.win_win
-src/scs/.appveyor.yml
-src/scs/appveyor.yml
-src/scs/examples
-src/scs/test
-src/scs/java
-src/scs/matlab
-src/scs/python
-src/scs/r
-src/scs/README.md
-src/scs/.bumpversion.cfg
-src/scs/.git
-src/scs/.gitignore
-src/scs/.TODO
-src/scs/.travis.yml
-src/scs/linsys/gpu
-src/scs/linsys/indirect
-inst/tools/*
+^\.git.*
+^\.Rhistory$
+^README\.html$
+^Makefile$
+^Taskfile\.yml$
+^scs_.*\.tar\.gz$
+# Developer tooling that regenerates inst/tinytest/problem_results, see
+# tools/upstream_tests/README.md. Never part of the built package. Every line
+# of this file is a regular expression, comments included.
+^tools$
 
-# Remove the citation file to pass checks. It is also in inst/CITATION
-src/scs/CITATION.cff
-
-Taskfile.yml
-scs_*.tar.gz
+# Bundled SCS (src/scs, upstream tag 3.3.1): ship only what the static
+# archive out/libscsdir.a compiles. Everything below is documentation, tests,
+# alternative linear-system back ends, or the experimental spectral cones,
+# none of which the R package builds.
+^src/scs/\.git.*
+^src/scs/\.github$
+^src/scs/\.bumpversion\.cfg$
+^src/scs/CITATION\.cff$
+^src/scs/CLAUDE\.md$
+^src/scs/CMakeLists\.txt$
+^src/scs/CONTRIBUTING\.md$
+^src/scs/README\.md$
+^src/scs/cmake$
+^src/scs/docs$
+^src/scs/test$
+^src/scs/linsys/gpu$
+^src/scs/linsys/mkl$
+^src/scs/linsys/cudss$
+^src/scs/linsys/accelerate$
+^src/scs/linsys/cpu/dense$
+^src/scs/linsys/cpu/indirect$
+^src/scs/src/spectral_cones$

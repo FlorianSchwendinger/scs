@@ -8,7 +8,3 @@ fi
 
 
 export R_INCLUDE_DIR=`"${R_HOME}/bin/Rscript" -e 'writeLines(R.home("include"))'`
-
-
-# Patch code so it fits CRAN regulations.
-${R_HOME}/bin/R --silent --vanilla -f ./inst/patch_scs.R

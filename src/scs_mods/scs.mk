@@ -4,11 +4,8 @@ else
 UNAME = $(shell uname -s)
 endif
 
-#CC = gcc
-# For cross-compiling with mingw use these.
-#CC = i686-w64-mingw32-gcc -m32
-#CC = x86_64-w64-mingw32-gcc-4.8
-CUCC = $(CC) #Don't need to use nvcc, since using cuda blas APIs
+# To enable sanitizers or cross-compile, override CC on the command line:
+#   make CC="clang -fsanitize=address,undefined"
 
 # For GPU must add cuda libs to path, e.g.
 # export DYLD_LIBRARY_PATH=/usr/local/cuda/lib:$DYLD_LIBRARY_PATH
@@ -31,35 +28,55 @@ endif
 endif
 endif
 
+# ABI version embedded in the shared-library soname/install_name, derived from
+# SCS_VERSION (keep project() in CMakeLists.txt in step). Bump on ABI breaks,
+# never on patch releases.
+SCS_SOVERSION := $(shell awk -F'"' '/define SCS_VERSION/ {split($$2, v, "."); print v[1] "." v[2]}' include/glbopts.h)
+
+# versioned(name): the file a shared library is linked as; the unversioned
+# name becomes a symlink to it (libscsdir.so.3.3, libscsdir.3.3.dylib).
+# Windows DLLs stay unversioned.
 ifeq ($(UNAME), Darwin)
 # we're on apple, no need to link rt library
 LDFLAGS += -lm
 SHARED = dylib
 SONAME = -install_name
+versioned = $(1:%.dylib=%.$(SCS_SOVERSION).dylib)
 else
 ifeq ($(ISWINDOWS), 1)
 # we're on windows (cygwin or msys)
 LDFLAGS += -lm
 SHARED = dll
 SONAME = -soname
+versioned = $(1)
 else
 # we're on a linux system, use accurate timer provided by clock_gettime()
-LDFLAGS += -lm -lrt
+LDFLAGS += -lm -lrt -lpthread
 SHARED = so
 SONAME = -soname
+versioned = $(1:%.so=%.so.$(SCS_SOVERSION))
 endif
 endif
 
-#TODO: check if this works for all platforms:
+# Default CUDA path; override with CUDA_PATH=/path/to/cuda
 ifeq ($(CUDA_PATH), )
 CUDA_PATH=/usr/local/cuda
+CUCC = $(CUDA_PATH)/bin/nvcc
 endif
+
 CULDFLAGS = -L$(CUDA_PATH)/lib -L$(CUDA_PATH)/lib64 -lcudart -lcublas -lcusparse
 CUDAFLAGS = $(CFLAGS) -I$(CUDA_PATH)/include -Ilinsys/gpu -Wno-c++11-long-long # turn off annoying long-long warnings in cuda header files
 
-# Add on default CFLAGS
-OPT = -O3
-override CFLAGS += -g -Wall -pedantic -funroll-loops -I. -Iinclude -Ilinsys $(OPT)
+CUDSS_FLAGS = -I$(CUDSS_PATH)/include -I$(CUDA_PATH)/include
+CUDSS_LDFLAGS = $(CULDFLAGS) -L$(CUDSS_PATH)/lib -lcudss
+
+# Default optimization flags. Override with OPT="-O3 -g" for valgrind, which
+# may not support instruction sets enabled by -march=native.
+# R package: no optimization flags of its own, R's CFLAGS govern
+# (-march=native is not portable).
+OPT ?=
+INCLUDE = -I. -Iinclude -Ilinsys
+override CFLAGS += -g -Wall -pedantic -funroll-loops $(INCLUDE) $(OPT)
 ifneq ($(ISWINDOWS), 1)
 override CFLAGS += -fPIC
 endif
@@ -67,9 +84,12 @@ endif
 LINSYS = linsys
 DIRSRC = $(LINSYS)/cpu/direct
 INDIRSRC = $(LINSYS)/cpu/indirect
+DENSESRC = $(LINSYS)/cpu/dense
 GPUDIR = $(LINSYS)/gpu/direct
 GPUINDIR = $(LINSYS)/gpu/indirect
 MKLSRC = $(LINSYS)/mkl/direct
+CUDSSSRC = $(LINSYS)/cudss/direct
+ACCELSRC = $(LINSYS)/accelerate/direct
 
 EXTSRC = $(LINSYS)/external
 
@@ -118,7 +138,7 @@ CUSTOM_FLAGS += -DNO_PRINTING=$(NO_PRINTING) # disable printing
 endif
 NO_READ_WRITE = 0
 ifneq ($(NO_READ_WRITE), 0)
-CUSTOM_FLAGS += -DNO_READ_WRITE=$(NO_READ_WRITE) # disable printing
+CUSTOM_FLAGS += -DNO_READ_WRITE=$(NO_READ_WRITE) # disable read/write (file I/O)
 endif
 ### VERBOSITY LEVELS: 0,1,2,...
 VERBOSITY = 0
@@ -130,10 +150,20 @@ ifneq ($(COVERAGE), 0)
 CUSTOM_FLAGS += --coverage # generate test coverage data
 endif
 
-# See: https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-link-line-advisor.html
-# This is probably not correct for other systems. TODO: update this
-# to work for all combinations of platform / compiler / threading options.
-MKLFLAGS = -L$(MKLROOT) -L$(MKLROOT)/lib -Wl,--no-as-needed -lmkl_rt -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -ldl
+# MKL linker flags for Linux + GCC + GNU threading. For other platforms, see:
+# https://www.intel.com/content/www/us/en/developer/tools/oneapi/onemkl-link-line-advisor.html
+#
+# We link against mkl_rt (the single dynamic library) which dispatches to the
+# correct interface layer at runtime. The BLAS integer width (LP64 vs ILP64)
+# is set at startup by the MKL-specific path in src/scs.c, controlled by the
+# BLAS64 compile flag.
+#
+# Note: The PARDISO integer width (pardiso vs pardiso_64) is controlled by DLONG,
+# not by the MKL interface layer. See linsys/mkl/direct/private.c for details.
+# OMPROOT should point to the Intel OpenMP (iomp5) installation, typically
+# /opt/intel/oneapi/compiler/latest. If unset, fall back to MKLROOT.
+OMPROOT ?= $(MKLROOT)
+MKLFLAGS = -L$(MKLROOT)/lib -L$(MKLROOT)/lib/intel64 -L$(OMPROOT)/lib -Wl,--no-as-needed -lmkl_rt -liomp5 -lpthread -ldl
 
 ############ OPENMP: ############
 # set USE_OPENMP = 1 to allow openmp (multi-threaded matrix multiplies):
@@ -172,6 +202,15 @@ ifneq ($(USE_LAPACK), 0)
   ifneq ($(BLASSUFFIX), "_")
   CUSTOM_FLAGS += -DBLASSUFFIX=$(BLASSUFFIX) # blas suffix (underscore usually)
   endif
+endif
+
+############ SPECTRAL CONES ############
+USE_SPECTRAL_CONES = 0
+ifneq ($(USE_SPECTRAL_CONES), 0)
+  ifeq ($(USE_LAPACK), 0)
+    $(error USE_SPECTRAL_CONES requires USE_LAPACK to be enabled)
+  endif
+  CUSTOM_FLAGS += -DUSE_SPECTRAL_CONES
 endif
 
 MATLAB_MEX_FILE = 0

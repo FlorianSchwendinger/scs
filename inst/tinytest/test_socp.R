@@ -5,7 +5,7 @@ rhs <- c(1.4142135623731, 0, 0, 0)
 obj <- c(1, 1, 1)
 cone <- list(z = 1L, l = 0L, q = 3L)
 
-sol <- scs(A = A, b = rhs, obj = obj, cone = cone)
+sol <- scs(A = A, b = rhs, obj = obj, cone = cone, control = list(eps_abs = 1e-9, eps_rel = 1e-9))
 expect_equal(sol$info$status, "solved")
 expect_equal(sol$x, c(sqrt(2), -1, -1), tolerance = 1e-7)
 expect_equal(sol$info$pobj, -0.5857864, tolerance = 1e-5)

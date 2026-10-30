@@ -1,19 +1,25 @@
-SCS_DIR=scs
-SCS_MODS_DIR=scs_mods
+SCS_DIR = scs
+SCS_MODS_DIR = scs_mods
 
-PKG_CFLAGS=-I./$(SCS_DIR)/include -I${R_INCLUDE_DIR} -DUSE_LAPACK -DCOPYAMATRIX -DR_LANG
-PKG_LIBS=-L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
+# R_LANG routes scs_printf to Rprintf (src/scs/include/glbopts.h), which needs
+# R's include directory on the sub-make's search path. USE_LAPACK enables the
+# semidefinite cones against R's BLAS/LAPACK.
+PKG_CFLAGS = -I./$(SCS_DIR)/include -I$(R_INCLUDE_DIR) -DUSE_LAPACK -DR_LANG
+PKG_LIBS = -L$(SCS_DIR)/out -lscsdir $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
 
 $(SHLIB): init.o scsr.o
 
 scsr.o: scs.ts
 
+# The modified files in scs_mods (see scs_mods/README.md) are copied over the
+# upstream sources before the static library is built. The modified scs.mk
+# leaves optimization to R's CFLAGS.
 scs.ts:
-	(cp -f $(SCS_MODS_DIR)/rw.c $(SCS_MODS_DIR)/scs.c $(SCS_DIR)/src && \
-	cp -f $(SCS_MODS_DIR)/private.c $(SCS_DIR)/linsys/cpu/direct && \
-	cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR) && \
-	(cd $(SCS_DIR) && \
-	($(MAKE) purge && \
-	$(MAKE) out/libscsdir.a CC="$(CC)" CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS) $(SOLARIS_FLAG)" AR="$(AR)" RANLIB="$(RANLIB)")) && \
-	touch $@)
-
+	(cp -f $(SCS_MODS_DIR)/scs.mk $(SCS_DIR) && \
+	 cp -f $(SCS_MODS_DIR)/cones.c $(SCS_DIR)/src && \
+	 (cd $(SCS_DIR) && \
+	  $(MAKE) purge && \
+	  $(MAKE) out/libscsdir.a CC="$(CC)" \
+	    CFLAGS="$(CFLAGS) $(PKG_CFLAGS) $(CPICFLAGS)" \
+	    AR="$(AR)" RANLIB="$(RANLIB)")) && \
+	touch $@

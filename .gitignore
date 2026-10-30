@@ -1,3 +1,4 @@
 .vscode
 .Rhistory
 scs_*.tar.gz
+tools/upstream_tests/build
