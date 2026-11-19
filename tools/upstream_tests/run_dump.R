@@ -1,4 +1,4 @@
-## Run upstream SCS 3.3.1's test functions inside this R process.
+## Run upstream SCS 3.3.2's test functions inside this R process.
 ## Usage: Rscript run_dump.R <upstream tree root> <dump_tests.so> <out dir>
 args <- commandArgs(trailingOnly = TRUE)
 tree <- args[1]; so <- args[2]; out <- args[3]

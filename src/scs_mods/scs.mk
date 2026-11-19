@@ -61,6 +61,10 @@ endif
 # Default CUDA path; override with CUDA_PATH=/path/to/cuda
 ifeq ($(CUDA_PATH), )
 CUDA_PATH=/usr/local/cuda
+endif
+
+# Default the compiler independently, including when CUDA_PATH is supplied.
+ifeq ($(CUCC), )
 CUCC = $(CUDA_PATH)/bin/nvcc
 endif
 
@@ -166,9 +170,11 @@ OMPROOT ?= $(MKLROOT)
 MKLFLAGS = -L$(MKLROOT)/lib -L$(MKLROOT)/lib/intel64 -L$(OMPROOT)/lib -Wl,--no-as-needed -lmkl_rt -liomp5 -lpthread -ldl
 
 ############ OPENMP: ############
-# set USE_OPENMP = 1 to allow openmp (multi-threaded matrix multiplies):
+# set USE_OPENMP = 1 to allow openmp (multi-threaded matrix multiplies and
+# projections onto exponential cones):
 # set the number of threads to, for example, 4 by entering the command:
 # export OMP_NUM_THREADS=4
+# The PSD blocks are projected in parallel only with USE_PARALLEL_PSD (below)
 
 USE_OPENMP = 0
 ifneq ($(USE_OPENMP), 0)
@@ -204,6 +210,36 @@ ifneq ($(USE_LAPACK), 0)
   endif
 endif
 
+############ PARALLEL PSD PROJECTION ############
+# set USE_PARALLEL_PSD = 1, with USE_OPENMP = 1, to project the PSD blocks of
+# a problem in parallel: on up to OMP_NUM_THREADS threads, each of which calls
+# LAPACK for its own blocks. Without it the blocks are projected one after
+# another, and a multithreaded BLAS uses its threads inside each block.
+#
+# It is off by default because it is only faster when the BLAS runs on ONE
+# thread inside the threads of SCS. Otherwise the threads of the two multiply,
+# and the projection is slower than without the option.
+# - A BLAS on the same OpenMP runtime as SCS does that by itself (an OpenMP
+#   build of OpenBLAS or BLIS, MKL on the matching threading layer). This is
+#   the setup to enable the option for.
+# - A BLAS with threads of its own (a pthreads OpenBLAS, the default on Debian
+#   and Ubuntu) has to be set to one thread (OPENBLAS_NUM_THREADS=1).
+# - A BLAS on another OpenMP runtime than SCS starts its own threads in every
+#   thread of SCS. SCS stops MKL from doing so where it can (Linux, shared
+#   MKL); for any other, build SCS and the BLAS with the same compiler family.
+# See "Parallel projection of PSD blocks" on the BLAS and LAPACK page of the
+# documentation, and the comment on the option in src/cones.c.
+USE_PARALLEL_PSD = 0
+ifneq ($(USE_PARALLEL_PSD), 0)
+  ifeq ($(USE_OPENMP), 0)
+    $(error USE_PARALLEL_PSD requires USE_OPENMP to be enabled)
+  endif
+  ifeq ($(USE_LAPACK), 0)
+    $(error USE_PARALLEL_PSD requires USE_LAPACK to be enabled)
+  endif
+  CUSTOM_FLAGS += -DUSE_PARALLEL_PSD
+endif
+
 ############ SPECTRAL CONES ############
 USE_SPECTRAL_CONES = 0
 ifneq ($(USE_SPECTRAL_CONES), 0)
@@ -221,9 +257,14 @@ PYTHON = 0
 ifneq ($(PYTHON), 0)
 CUSTOM_FLAGS += -DPYTHON=$(PYTHON) # python extension
 endif
+# Compiling for use in R: SCS then prints with Rprintf, which needs the R
+# headers on the include path. The macro the source reads is R_LANG, which is
+# also what the R package passes in CFLAGS when it builds SCS. Only the
+# libraries can be built this way without R: the demo and test programs call
+# Rprintf and do not link.
 USING_R = 0
 ifneq ($(USING_R), 0)
-CUSTOM_FLAGS += -DUSING_R=$(USING_R) # R extension
+CUSTOM_FLAGS += -DR_LANG # R extension
 endif
 
 # debug to see var values, e.g. 'make print-OBJECTS' shows OBJECTS value

@@ -13,8 +13,20 @@
 #include "scs_blas.h" /* contains BLAS(X) macros and type info */
 #include "util.h"
 
+#include <float.h>
 #include <stdio.h>
 #include <string.h>
+/* USE_PARALLEL_PSD is a build option, off by default, that compiles in the
+ * parallel projection of the PSD blocks. It needs OpenMP and LAPACK. Every
+ * other build, with OpenMP or not, projects the blocks one after another. It
+ * is an option because it is only faster when the BLAS runs on one thread
+ * inside the threads of SCS: see "PARALLEL PROJECTION OF THE PSD BLOCKS"
+ * below for what it does and what it asks of the BLAS. */
+#if defined(USE_PARALLEL_PSD) && defined(_OPENMP) && defined(USE_LAPACK)
+#define PSD_PARALLEL (1)
+#include <omp.h>
+#include <stdlib.h> /* qsort */
+#endif
 
 /*
  * Cross-platform Complex Type Handling
@@ -47,8 +59,22 @@ typedef struct {
 
 /* Constants */
 #define BOX_CONE_MAX_ITERS (25)
-#define POW_CONE_TOL (1e-9)
-#define POW_CONE_MAX_ITERS (20)
+/* Power cone projection: POW_CONE_TOL is the tolerance relative to |v| for
+ * the Newton solve and the membership checks, POW_CONE_START_SLOPE bounds
+ * |dx/dr| and |dy/dr| at r = rh for the Newton solve to start there, and
+ * POW_CONE_EPS is the machine epsilon. All must suit the working precision;
+ * in particular the first Newton step from rh is only representable when
+ * POW_CONE_START_SLOPE^2 * POW_CONE_EPS is small, hence the float value. */
+#ifdef SFLOAT
+#define POW_CONE_TOL (1e-6)
+#define POW_CONE_START_SLOPE (10)
+#define POW_CONE_EPS (FLT_EPSILON)
+#else
+#define POW_CONE_TOL (1e-12)
+#define POW_CONE_START_SLOPE (1e3)
+#define POW_CONE_EPS (DBL_EPSILON)
+#endif
+#define POW_CONE_MAX_ITERS (50)
 
 /* Box cone limits (+ or -) taken to be INF */
 #define MAX_BOX_VAL (1e15)
@@ -73,16 +99,16 @@ void BLASC(heev)(const char *jobz, const char *uplo, blas_int *n,
                  SCS_BLAS_COMPLEX_TYPE *work, blas_int *lwork,
                  scs_float *rwork, blas_int *info);
 
-blas_int BLAS(syrk)(const char *uplo, const char *trans, const blas_int *n,
-                    const blas_int *k, const scs_float *alpha,
-                    const scs_float *a, const blas_int *lda,
-                    const scs_float *beta, scs_float *c, const blas_int *ldc);
+void BLAS(syrk)(const char *uplo, const char *trans, const blas_int *n,
+                const blas_int *k, const scs_float *alpha, const scs_float *a,
+                const blas_int *lda, const scs_float *beta, scs_float *c,
+                const blas_int *ldc);
 
-blas_int BLASC(herk)(const char *uplo, const char *trans, const blas_int *n,
-                     const blas_int *k, const scs_float *alpha,
-                     const SCS_BLAS_COMPLEX_TYPE *a, const blas_int *lda,
-                     const scs_float *beta, SCS_BLAS_COMPLEX_TYPE *c,
-                     const blas_int *ldc);
+void BLASC(herk)(const char *uplo, const char *trans, const blas_int *n,
+                 const blas_int *k, const scs_float *alpha,
+                 const SCS_BLAS_COMPLEX_TYPE *a, const blas_int *lda,
+                 const scs_float *beta, SCS_BLAS_COMPLEX_TYPE *c,
+                 const blas_int *ldc);
 
 void BLAS(scal)(const blas_int *n, const scs_float *sa, scs_float *sx,
                 const blas_int *incx);
@@ -90,6 +116,10 @@ void BLASC(scal)(const blas_int *n, const SCS_BLAS_COMPLEX_TYPE *sa,
                  SCS_BLAS_COMPLEX_TYPE *sx, const blas_int *incx);
 
 #ifdef USE_SPECTRAL_CONES
+void BLAS(syev)(const char *jobz, const char *uplo, blas_int *n, scs_float *a,
+                blas_int *lda, scs_float *w, scs_float *work, blas_int *lwork,
+                blas_int *info);
+
 void BLAS(gesvd)(const char *jobu, const char *jobvt, const blas_int *m,
                  const blas_int *n, scs_float *a, const blas_int *lda,
                  scs_float *s, scs_float *u, const blas_int *ldu, scs_float *vt,
@@ -282,32 +312,30 @@ void SCS(finish_cone)(ScsConeWork *c) {
   if (!c)
     return;
 #ifdef USE_LAPACK
-  if (c->Xs)
-    scs_free(c->Xs);
-  if (c->cXs)
-    scs_free(c->cXs);
-  if (c->Z)
-    scs_free(c->Z);
-  if (c->cZ)
-    scs_free(c->cZ);
-  if (c->e)
-    scs_free(c->e);
-  if (c->isuppz)
-    scs_free(c->isuppz);
-  if (c->work)
-    scs_free(c->work);
-  if (c->iwork)
-    scs_free(c->iwork);
-  if (c->cwork)
-    scs_free(c->cwork);
-  /* c->rwork is aliased to c->work in setup, no free needed */
+  if (c->psd_tw) {
+    scs_int t, j;
+    for (t = 0; t < MAX(c->psd_nthreads, 1); ++t) {
+      ScsPsdWork *w = &(c->psd_tw[t]);
+      void *bufs[] = {w->Xs,  w->Z,  w->e,     w->work,   w->gamma,
+                      w->cXs, w->cZ, w->cwork, w->isuppz, w->iwork};
+      for (j = 0; j < (scs_int)(sizeof(bufs) / sizeof(bufs[0])); ++j) {
+        if (bufs[j])
+          scs_free(bufs[j]);
+      }
+    }
+    scs_free(c->psd_tw);
+  }
 #endif
+  if (c->psd_blk)
+    scs_free(c->psd_blk);
+  if (c->psd_tptr)
+    scs_free(c->psd_tptr);
+  if (c->psd_off)
+    scs_free(c->psd_off);
   if (c->cone_boundaries)
     scs_free(c->cone_boundaries);
   if (c->cone_boundaries_psd_n)
     scs_free(c->cone_boundaries_psd_n);
-  if (c->psd_gamma)
-    scs_free(c->psd_gamma);
   if (c->r_box_inv)
     scs_free(c->r_box_inv);
   if (c->s)
@@ -388,7 +416,7 @@ static void fit_psd_block_weights(scs_float *vec, scs_int n) {
   scs_float lo = SQRTF(DIAG_SCALE_MULT_MIN), hi = SQRTF(DIAG_SCALE_MULT_MAX);
   scs_float *ell = (scs_float *)scs_calloc(n, sizeof(scs_float));
   if (!ell) {
-    return; /* leave profile as-is; caller falls back to scalar */
+    return; /* leave the block as it is */
   }
   /* Floor entries relative to the block max: (near-)zero rows carry no
    * information about the block's scale structure (e.g. unconstrained
@@ -852,6 +880,469 @@ scs_int SCS(validate_cones)(const ScsData *d, const ScsCone *k) {
   return 0;
 }
 
+/* ================ PSD Block Workspaces and Threads ==================== */
+
+/*
+ * PARALLEL PROJECTION OF THE PSD BLOCKS (build option USE_PARALLEL_PSD)
+ *
+ * What the option does. The real and complex PSD blocks of a cone are
+ * projected independently of each other. A build with USE_PARALLEL_PSD, OpenMP
+ * and LAPACK shares them out over OpenMP threads, and each thread calls LAPACK
+ * for its own blocks. Every other build projects them one after another on
+ * the calling thread.
+ *
+ * Two levels of threads, one at a time. The projection of a block is an
+ * eigendecomposition in LAPACK, which runs on BLAS, and a BLAS can have
+ * threads of its own. So the cores can be used in two ways:
+ * - by the BLAS, inside one block at a time. This is what a build without
+ *   the option does, and what a build with it does when it keeps a
+ *   projection serial (psd_num_threads): there is no parallel region then,
+ *   and the BLAS is as free to use its threads as it is without OpenMP;
+ * - by SCS, across the blocks, with the BLAS on one thread inside each.
+ * Across the blocks is the faster way when there are several of them: on 4
+ * threads, 4 to 16 blocks of n = 256 to 1024 were projected 3 times faster,
+ * while the threads of the BLAS inside one block gained nothing below n of
+ * about 1000 (OpenBLAS, Accelerate, NVPL). It cannot be faster than its
+ * largest block, though, so a cone with one dominant block is left to the
+ * BLAS. What must not happen is both at once: t threads of SCS that each
+ * start the threads of the BLAS are more threads than cores, and slower than
+ * either way alone.
+ *
+ * What the BLAS does inside the threads of SCS. This decides whether the
+ * option pays. SCS cannot ensure it, and cannot even see it for every BLAS,
+ * which is why the option is off by default and left to the build, which
+ * knows its BLAS:
+ * - A BLAS on the OpenMP runtime of SCS (OpenMP builds of OpenBLAS and BLIS,
+ *   NVPL, MKL on the matching threading layer) runs on one thread there by
+ *   itself. Its parallel regions are nested in ours, and OpenMP gives a
+ *   nested region one thread by default. This is the setup the option is
+ *   for. The OpenMP thread count (OMP_NUM_THREADS) is then one budget for
+ *   both levels: our team during a parallel projection, the threads of the
+ *   BLAS everywhere else. It rests on that default: with nested parallelism
+ *   switched on (OMP_MAX_ACTIVE_LEVELS above 1), such a BLAS may start
+ *   threads inside ours.
+ * - A BLAS on another OpenMP runtime (libiomp5 or libomp under a GNU-compiled
+ *   SCS) cannot see our region and starts its own threads in each of our
+ *   threads. Measured with an OpenBLAS on libomp: 16 threads for 4, at half
+ *   the speed. For MKL, each of our threads therefore sets MKL's thread-local
+ *   thread count to one for the projection (mkl_set_local_threads). This
+ *   goes through a weak reference: it needs ELF and MKL's symbols visible to
+ *   SCS.
+ * - A BLAS with a thread pool of its own knows nothing of OpenMP. That is a
+ *   pthreads OpenBLAS: the default on Debian and Ubuntu, and what Julia and
+ *   the SciPy wheels ship. With more than one thread, the BLAS calls of our
+ *   threads go to its pool as well and the cores are oversubscribed (measured
+ *   up to 3.6x slower than serial), and it has no thread-local setting to
+ *   stop that. So when the linked BLAS is a pthreads OpenBLAS on more than
+ *   one thread the blocks stay serial (blas_threads_outside_openmp), and
+ *   OPENBLAS_NUM_THREADS=1 is what enables the parallel projection. This
+ *   check goes through weak references too: it is off for a static OpenBLAS,
+ *   one with suffixed symbols, and one loaded privately by another library
+ *   (libblastrampoline in Julia). On one thread an OpenBLAS without OpenMP
+ *   still makes the BLAS calls of our threads wait for one lock, and the
+ *   estimate of the thread count adds that (PSD_PAR_LOCK_COST): small
+ *   blocks then stay serial, and the others get fewer threads than there
+ *   are. That needs the same symbols.
+ * - Accelerate keeps threads of its own as well, which stayed mostly idle
+ *   inside ours: at its default settings the parallel projection was 2.3 to
+ *   3.3x faster than the serial one on 4 threads, and at most 17% slower
+ *   than with Accelerate on one thread.
+ * Neither check exists on Mach-O or Windows, and there is none for other
+ * libraries, or for a BLAS other than MKL on another OpenMP runtime. There
+ * the BLAS has to be put on one thread for the whole process, or the build
+ * left without the option. An environment variable cannot do that for an
+ * OpenMP BLAS on another runtime: OMP_NUM_THREADS is read by both runtimes,
+ * and an OpenMP build of OpenBLAS ignores OPENBLAS_NUM_THREADS.
+ *
+ * The split over threads is fixed at setup: blocks in order of decreasing
+ * estimated time (psd_block_cost) go to the least loaded thread (LPT
+ * scheduling). Thread t projects its blocks (list t) with workspace
+ * c->psd_tw[t], sized for its own largest block; psd_tw[0] is the workspace
+ * of all the matrix cones and no other is larger, so the extra memory is at
+ * most (psd_nthreads - 1) times the serial PSD workspace. Every workspace has
+ * the same LAPACK work-array sizes, found for the largest blocks: syevr and
+ * heevr pass the work array left after their own arrays to sytrd/hetrd, which
+ * lower their block size to fit, so the blocking (and the rounding) of a
+ * block larger than the crossover depends on the exact size. Each block then
+ * runs the same code with the same sizes on any thread, so with
+ * single-threaded BLAS the iterates do not depend on the number of threads.
+ *
+ * The number of threads is the OpenMP thread count at setup, at most the
+ * number of blocks with n > 1. A projection uses fewer threads when the
+ * OpenMP thread count has been lowered since: a smaller team still projects
+ * every list, each with its own workspace. The number of threads is also
+ * bounded by the work. Each thread of a parallel region takes time to wake
+ * and to join (PSD_PAR_THREAD_COST), so the region is fastest with fewer
+ * threads than there are when the blocks are little work: about
+ * sqrt(S / PSD_PAR_THREAD_COST) of them for an estimated serial time S over
+ * many blocks. The threads are not used, and the BLAS is left to its own,
+ * when
+ * - the estimated gain is below PSD_PAR_MIN_GAIN: little work, or one block
+ *   with most of it (the parallel loop is no faster than its largest block),
+ * - a block larger than PSD_PAR_BLAS_N holds more than half of the work (the
+ *   parallel loop then gains less than 2x, while that block alone may run
+ *   faster with multithreaded BLAS), or
+ * - the workspace is set up inside an active parallel region (the caller's
+ *   threads are the parallelism then).
+ */
+#ifdef PSD_PARALLEL
+/* Size of PSD block b: real block b if b < ssize, else complex b - ssize */
+static inline scs_int psd_block_n(const ScsCone *k, scs_int b) {
+  return b < k->ssize ? k->s[b] : k->cs[b - k->ssize];
+}
+
+/* Estimated serial time, in nanoseconds, below which the threads are not
+ * used. Zero, because the rules of psd_num_threads keep little work serial
+ * already. A large value keeps every projection serial. Those rules take the
+ * threads to be awake. Where they sleep between projections (the GNU runtime
+ * on Linux, when the rest of an iteration takes long enough), waking them can
+ * cost more than a projection of less than a millisecond gains, and a minimum
+ * of that size here would avoid it. It is zero there too, on purpose: the
+ * same minimum would keep small problems serial, whose threads stay awake and
+ * gain the most (an iteration 2.5 times faster, against one up to 27% slower,
+ * both measured). OMP_WAIT_POLICY=active, or a build without
+ * USE_PARALLEL_PSD, is the switch for the other case. */
+#ifndef PSD_PAR_MIN_COST
+#define PSD_PAR_MIN_COST (0.)
+#endif
+
+/* Time, in nanoseconds, that each thread adds to a parallel region, measured
+ * with the GNU runtime on projections that follow each other closely: about
+ * 5 us per thread on macOS (Apple M4), where the threads of a team sleep
+ * between regions, and 1.5 to 2 us on Linux (Cortex-X925), where they spin
+ * for a while after a region. */
+#ifndef PSD_PAR_THREAD_COST
+#ifdef __APPLE__
+#define PSD_PAR_THREAD_COST (5e3)
+#else
+#define PSD_PAR_THREAD_COST (2e3)
+#endif
+#endif
+
+/* smallest estimated gain for which the threads are used */
+#ifndef PSD_PAR_MIN_GAIN
+#define PSD_PAR_MIN_GAIN (1.25)
+#endif
+
+/* Largest block for which the threads of the BLAS are not worth more than
+ * the loop. With a block of n = 300 or 500 that holds more than half of the
+ * work, the loop was 1.6x faster than the serial projection, and the serial
+ * projection with a multithreaded BLAS 0.7x to 1.25x (NVPL, OpenBLAS;
+ * Accelerate 1.0x at 300). At n = 1000 the two were about equal, and at 2000
+ * the BLAS threads were ahead (1.7x to 1.9x against 1.2x to 1.4x). Blocks of
+ * n = 1000 to 2000 were 1.3x to 2.1x faster with BLAS threads in #505
+ * (OpenBLAS, MKL). */
+#ifndef PSD_PAR_BLAS_N
+#define PSD_PAR_BLAS_N (512)
+#endif
+
+/* An OpenBLAS that was not built with OpenMP takes one mutex in every BLAS
+ * call that needs a work buffer (dsymv: one call per column in the reduction
+ * to tridiagonal form), so the calls of the threads of a team wait for each
+ * other. A block of size n then takes longer in a team of t threads than
+ * alone, by n * (PSD_PAR_LOCK_COST * (t - 1) + PSD_PAR_LOCK_COST2 * (t - 1)^2)
+ * nanoseconds. Measured on a Cortex-X925 under Linux (OpenBLAS 0.3.31,
+ * pthreads build on one thread), the time per column depended little on the
+ * size of the block, for n = 3 to 32: about 0.3, 0.5, 1.1, 1.7 and 4.8 us
+ * with 2, 3, 4, 5 and 10 threads. The constants are a third above the fit to
+ * that, because the smallest blocks lost more. An OpenMP build did not show
+ * this (measured on macOS). */
+#ifndef PSD_PAR_LOCK_COST
+#define PSD_PAR_LOCK_COST (300.)
+#endif
+#ifndef PSD_PAR_LOCK_COST2
+#define PSD_PAR_LOCK_COST2 (50.)
+#endif
+
+/* OpenBLAS: openblas_get_parallel() is 0 sequential, 1 pthreads, 2 OpenMP.
+ * MKL: MKL_Set_Num_Threads_Local(n) sets the number of MKL threads for the
+ * calling thread only, and returns the previous one (0: the global setting).
+ * Weak references, so other BLAS libraries leave them NULL (ELF only: a
+ * weak reference to a missing symbol does not link on Mach-O). C linkage,
+ * so a C++ build looks up the same symbols. */
+#if defined(__GNUC__) && defined(__ELF__)
+#ifdef __cplusplus
+extern "C" {
+#endif
+int openblas_get_parallel(void) __attribute__((weak));
+int openblas_get_num_threads(void) __attribute__((weak));
+int MKL_Set_Num_Threads_Local(int) __attribute__((weak));
+#ifdef __cplusplus
+}
+#endif
+#endif
+
+/* Whether BLAS calls would start threads of their own inside OpenMP */
+static scs_int blas_threads_outside_openmp(void) {
+#if defined(__GNUC__) && defined(__ELF__)
+  if (openblas_get_parallel && openblas_get_num_threads) {
+    return openblas_get_parallel() == 1 && openblas_get_num_threads() > 1;
+  }
+#endif
+  return 0;
+}
+
+/* Whether the BLAS is an OpenBLAS without OpenMP, whose calls from several
+ * threads wait for one lock (PSD_PAR_LOCK_COST) */
+static scs_int blas_calls_share_lock(void) {
+#if defined(__GNUC__) && defined(__ELF__)
+  if (openblas_get_parallel) {
+    return openblas_get_parallel() != 2;
+  }
+#endif
+  return 0;
+}
+
+/* Set the number of MKL threads for the calling thread and return the previous
+ * setting, to restore it with. Does nothing, and returns 0, without MKL. */
+static int mkl_set_local_threads(int nt) {
+#if defined(__GNUC__) && defined(__ELF__)
+  if (MKL_Set_Num_Threads_Local) {
+    return MKL_Set_Num_Threads_Local(nt);
+  }
+#endif
+  (void)nt;
+  return 0;
+}
+
+typedef struct {
+  scs_float cost;
+  scs_int blk;
+} PsdBlockCost;
+
+/* Estimated time of the projection of block b, in nanoseconds: a cubic in n
+ * fitted to the measured times of single blocks, with 4x the n^3 term for a
+ * complex block. It is within 25% of them for n from 2 to 300 on an Apple
+ * M4 with Accelerate and on a Cortex-X925 with OpenBLAS, and within 30% of
+ * the times of n = 1000 to 2000 on x86-64 with OpenBLAS and with MKL (#505).
+ * It is up to 1.5x too low at n = 1000 on the Cortex-X925, and up to 1.9x too
+ * low below n = 10 with NVPL, which takes longer for small blocks. Only the
+ * relative sizes and the order of magnitude matter. n^3 alone makes small
+ * blocks far too cheap: a block of n = 10 takes 1/650 of the time of one of
+ * n = 300, not 1/27000. LAPACK takes a short path for n = 2 (0.2 us, but
+ * 1.5 us with NVPL), and a block of n = 1 is a clamp. */
+static scs_float psd_block_cost(const ScsCone *k, scs_int b) {
+  scs_float n = (scs_float)psd_block_n(k, b);
+  if (b < k->ssize)
+    return n < 3. ? (n < 2. ? 2. : 200.)
+                  : 600. + n * (250. + n * (45. + 0.06 * n));
+  return n < 3. ? (n < 2. ? 2. : 300.)
+                : 600. + n * (250. + n * (70. + 0.24 * n));
+}
+
+/* decreasing cost, ties by block index so the split is deterministic */
+static int cmp_psd_block_cost(const void *a, const void *b) {
+  const PsdBlockCost *x = (const PsdBlockCost *)a;
+  const PsdBlockCost *y = (const PsdBlockCost *)b;
+  if (x->cost != y->cost)
+    return x->cost < y->cost ? 1 : -1;
+  return (x->blk > y->blk) - (x->blk < y->blk);
+}
+
+/* LPT: each block, largest first, to the least loaded thread; each thread's
+ * list largest first. Fills psd_tptr and psd_blk for psd_nthreads > 1. */
+static scs_int assign_psd_blocks(ScsConeWork *c, const ScsCone *k) {
+  scs_int nblk = k->ssize + k->cssize, nt = c->psd_nthreads, i, j, t;
+  scs_int status = 0, *pos = (scs_int *)scs_calloc(nblk, sizeof(scs_int));
+  scs_float *load = (scs_float *)scs_calloc(nt, sizeof(scs_float));
+  PsdBlockCost *bc = (PsdBlockCost *)scs_calloc(nblk, sizeof(PsdBlockCost));
+  if (!pos || !load || !bc) {
+    status = -1;
+    goto out;
+  }
+  for (i = 0; i < nblk; ++i) {
+    bc[i].blk = i;
+    bc[i].cost = psd_block_cost(k, i);
+  }
+  qsort(bc, nblk, sizeof(PsdBlockCost), cmp_psd_block_cost);
+  memset(c->psd_tptr, 0, (nt + 1) * sizeof(scs_int));
+  for (j = 0; j < nblk; ++j) {
+    scs_int tmin = 0;
+    for (t = 1; t < nt; ++t) {
+      if (load[t] < load[tmin])
+        tmin = t;
+    }
+    load[tmin] += bc[j].cost;
+    pos[j] = tmin;
+    c->psd_tptr[tmin + 1]++;
+  }
+  for (t = 0; t < nt; ++t)
+    c->psd_tptr[t + 1] += c->psd_tptr[t];
+  /* psd_tptr[t] is the fill cursor of thread t, then shift back to list
+   * starts */
+  for (j = 0; j < nblk; ++j)
+    c->psd_blk[c->psd_tptr[pos[j]]++] = bc[j].blk;
+  for (t = nt; t > 0; --t)
+    c->psd_tptr[t] = c->psd_tptr[t - 1];
+  c->psd_tptr[0] = 0;
+out:
+  if (pos)
+    scs_free(pos);
+  if (load)
+    scs_free(load);
+  if (bc)
+    scs_free(bc);
+  return status;
+}
+
+/* Estimated time of the parallel loop with nt threads over nblk blocks, which
+ * take total in all and cmax for the largest. With a lock in the BLAS
+ * (PSD_PAR_LOCK_COST), ncol is the number of columns of these blocks and nmax
+ * that of the largest; without one, both are zero. */
+static scs_float psd_par_time(scs_int nt, scs_int nblk, scs_float total,
+                              scs_float cmax, scs_float ncol, scs_float nmax) {
+  scs_float lock =
+      (nt - 1) * (PSD_PAR_LOCK_COST + (nt - 1) * PSD_PAR_LOCK_COST2);
+  scs_float list =
+      (scs_float)((nblk + nt - 1) / nt) * ((total + lock * ncol) / nblk);
+  return MAX(cmax + lock * nmax, list) + nt * PSD_PAR_THREAD_COST;
+}
+#endif
+
+/* Number of threads for the PSD blocks (see above) */
+static scs_int psd_num_threads(const ScsCone *k) {
+#ifdef PSD_PARALLEL
+  scs_int b, t, ntmax, nbig = 0, nmax = 0, ncol = 0;
+  scs_int nt = omp_get_max_threads(), lock = blas_calls_share_lock();
+  scs_float total = 0., cmax = 0., est, best = 0., lcol, lmax;
+  for (b = 0; b < k->ssize + k->cssize; ++b) {
+    scs_int n = psd_block_n(k, b);
+    scs_float cost = psd_block_cost(k, b);
+    total += cost;
+    cmax = MAX(cmax, cost);
+    nmax = MAX(nmax, n);
+    if (n > 1) {
+      nbig++;
+      ncol += n;
+    }
+  }
+  nt = MIN(nt, nbig);
+  if (nt < 2 || total < PSD_PAR_MIN_COST || omp_in_parallel() ||
+      blas_threads_outside_openmp())
+    return 1;
+  if (2 * cmax > total && nmax > PSD_PAR_BLAS_N)
+    return 1;
+  /* With t threads the parallel loop takes about as long as its longest
+   * list, which is at least the largest block and at least its share of the
+   * blocks at their average time, plus the time of the t threads. Find the
+   * fewest threads with the smallest such estimate. Without a lock in the
+   * BLAS, then take the most threads that come within 5% of it: the estimate
+   * is flat where one block bounds the loop, and more threads are then safer
+   * for the lists of the other blocks. With a lock every thread slows the
+   * others down. */
+  lcol = lock ? (scs_float)ncol : 0.;
+  lmax = lock ? (scs_float)nmax : 0.;
+  ntmax = nt;
+  for (t = 2; t <= ntmax; ++t) {
+    est = psd_par_time(t, nbig, total, cmax, lcol, lmax);
+    if (t == 2 || est < best) {
+      best = est;
+      nt = t;
+    }
+  }
+  for (t = ntmax; !lock && t > nt; --t) {
+    if (psd_par_time(t, nbig, total, cmax, lcol, lmax) <= 1.05 * best)
+      nt = t; /* the last pass: t > nt no longer holds */
+  }
+  return total < PSD_PAR_MIN_GAIN * best ? 1 : nt;
+#else
+  (void)k;
+  return 1;
+#endif
+}
+
+/* Offsets of the PSD blocks and their split over threads */
+static scs_int set_up_psd_schedule(ScsConeWork *c, const ScsCone *k) {
+  scs_int nblk = k->ssize + k->cssize, nt = psd_num_threads(k), b;
+  c->psd_tptr = (scs_int *)scs_calloc(nt + 1, sizeof(scs_int));
+  c->psd_blk = (scs_int *)scs_calloc(nblk, sizeof(scs_int));
+  c->psd_off = (scs_int *)scs_calloc(nblk, sizeof(scs_int));
+  if (!c->psd_tptr || !c->psd_blk || !c->psd_off)
+    return -1;
+  c->psd_nthreads = nt;
+  c->psd_len = 0;
+  for (b = 0; b < nblk; ++b) {
+    c->psd_off[b] = c->psd_len;
+    c->psd_len += b < k->ssize ? get_sd_cone_size(k->s[b])
+                               : get_csd_cone_size(k->cs[b - k->ssize]);
+    c->psd_blk[b] = b;
+  }
+  c->psd_tptr[1] = nblk;
+#ifdef PSD_PARALLEL
+  if (nt > 1)
+    return assign_psd_blocks(c, k);
+#endif
+  return 0;
+}
+
+#ifdef USE_LAPACK
+/* Buffers of a workspace for eigenvalues up to n, real matrices up to nr
+ * and complex ones up to nc (none if 0) */
+static scs_int alloc_psd_bufs(ScsPsdWork *w, blas_int n, blas_int nr,
+                              blas_int nc) {
+  w->e = (scs_float *)scs_calloc(n, sizeof(scs_float));
+  w->gamma = (scs_float *)scs_calloc(n, sizeof(scs_float));
+  w->isuppz = (blas_int *)scs_calloc(MAX(2, 2 * n), sizeof(blas_int));
+  if (!w->e || !w->gamma || !w->isuppz)
+    return -1;
+  if (nr > 0) {
+    w->Xs = (scs_float *)scs_calloc(nr * nr, sizeof(scs_float));
+    w->Z = (scs_float *)scs_calloc(nr * nr, sizeof(scs_float));
+    if (!w->Xs || !w->Z)
+      return -1;
+  }
+  if (nc > 0) {
+    w->cXs = (scs_complex_float *)scs_calloc(nc * nc, sizeof(scs_complex_float));
+    w->cZ = (scs_complex_float *)scs_calloc(nc * nc, sizeof(scs_complex_float));
+    if (!w->cXs || !w->cZ)
+      return -1;
+  }
+  return 0;
+}
+
+/* LAPACK work arrays, the same sizes in every workspace (see above) */
+static scs_int alloc_psd_work_arrays(ScsPsdWork *w, blas_int lwork,
+                                     blas_int liwork, blas_int lcwork) {
+  w->lwork = lwork;
+  w->liwork = liwork;
+  w->lcwork = lcwork;
+  if (lwork > 0 && !(w->work = (scs_float *)scs_calloc(lwork, sizeof(scs_float))))
+    return -1;
+  if (liwork > 0 &&
+      !(w->iwork = (blas_int *)scs_calloc(liwork, sizeof(blas_int))))
+    return -1;
+  if (lcwork > 0 && !(w->cwork = (scs_complex_float *)scs_calloc(
+                          lcwork, sizeof(scs_complex_float))))
+    return -1;
+  return 0;
+}
+
+/* Workspaces of PSD threads 1, 2, ..., sized for each thread's largest
+ * blocks, with the work-array sizes of psd_tw[0]; none on the serial path.
+ * Each is at most the size of psd_tw[0], so the extra memory is at most
+ * (psd_nthreads - 1) times the serial PSD workspace. */
+static scs_int set_up_psd_thread_work(ScsConeWork *c, const ScsCone *k) {
+  const ScsPsdWork *w0 = c->psd_tw;
+  scs_int t, j, b;
+  for (t = 1; t < c->psd_nthreads; ++t) {
+    blas_int nr = 0, nc = 0;
+    for (j = c->psd_tptr[t]; j < c->psd_tptr[t + 1]; ++j) {
+      b = c->psd_blk[j];
+      if (b < k->ssize)
+        nr = MAX(nr, (blas_int)k->s[b]);
+      else
+        nc = MAX(nc, (blas_int)k->cs[b - k->ssize]);
+    }
+    if (alloc_psd_bufs(&(c->psd_tw[t]), MAX(MAX(nr, nc), 1), nr > 1 ? nr : 0,
+                       nc > 1 ? nc : 0) < 0 ||
+        alloc_psd_work_arrays(&(c->psd_tw[t]), w0->lwork, w0->liwork,
+                              nc > 1 ? w0->lcwork : 0) < 0)
+      return -1;
+  }
+  return 0;
+}
+#endif
+
 /* ======================== Workspace Setup ============================= */
 
 /*
@@ -860,6 +1351,8 @@ scs_int SCS(validate_cones)(const ScsData *d, const ScsCone *k) {
 static scs_int set_up_cone_work_spaces(ScsConeWork *c, const ScsCone *k) {
   scs_int i;
 #ifdef USE_LAPACK
+  ScsPsdWork *w0; /* the workspace of the matrix cones, and of PSD thread 0 */
+  scs_int real_mats = k->ssize > 0; /* whether Xs and Z are needed */
   /* Max dim for eigenvalues (e) and integer work (isuppz) */
   blas_int n_max = 1;
   blas_int n_max_real = 1; /* Max dim for Real PSD matrix (Xs) */
@@ -878,6 +1371,7 @@ static scs_int set_up_cone_work_spaces(ScsConeWork *c, const ScsCone *k) {
   /* Max workspace sizes across all cone types */
   blas_int lwork_max = 0;
   blas_int liwork_max = 0;
+  blas_int lcwork = 0;
 
   /* Calculate Dimensions */
   for (i = 0; i < k->ssize; ++i) {
@@ -922,34 +1416,29 @@ static scs_int set_up_cone_work_spaces(ScsConeWork *c, const ScsCone *k) {
   }
 
   /* Update Max Real Dims based on Spectral needs */
+  real_mats = real_mats || k->dsize > 0 || k->sl_size > 0;
   n_max = MAX(n_max, n_max_logdet);
   n_max = MAX(n_max, n_max_sl);
   n_max_real = MAX(n_max_real, n_max_logdet);
   n_max_real = MAX(n_max_real, n_max_sl);
 #endif
 
-  /* Allocate standard eigenvalue buffers
-   * 'e' stores eigenvalues, 'isuppz' supports them. Shared by Real/Complex.
-   */
-  c->e = (scs_float *)scs_calloc(n_max, sizeof(scs_float));
-  c->psd_gamma = (scs_float *)scs_calloc(n_max, sizeof(scs_float));
-  c->isuppz = (blas_int *)scs_calloc(MAX(2, 2 * n_max), sizeof(blas_int));
-  if (!c->e || !c->isuppz)
+  /* Allocate the buffers: 'e' stores eigenvalues, 'isuppz' supports them
+   * (shared by Real/Complex), Xs and Z for real matrices, cXs and cZ for
+   * complex ones */
+  c->psd_tw = (ScsPsdWork *)scs_calloc(MAX(c->psd_nthreads, 1),
+                                       sizeof(ScsPsdWork));
+  if (!c->psd_tw)
+    return -1;
+  w0 = c->psd_tw;
+  if (alloc_psd_bufs(w0, n_max, real_mats ? n_max_real : 0,
+                     k->cssize > 0 ? n_max_csd : 0) < 0)
     return -1;
 
   /* 1. Real PSD Workspace Query (syevr) */
-  if (k->ssize > 0
-#ifdef USE_SPECTRAL_CONES
-      || k->dsize > 0 || k->sl_size > 0
-#endif
-  ) {
-    c->Xs = (scs_float *)scs_calloc(n_max_real * n_max_real, sizeof(scs_float));
-    c->Z = (scs_float *)scs_calloc(n_max_real * n_max_real, sizeof(scs_float));
-    if (!c->Xs || !c->Z)
-      return -1;
-
-    BLAS(syevr)("V", "A", "L", &n_max_real, c->Xs, &n_max_real, &d_f, &d_f,
-                &d_i, &d_i, &abstol, &m, c->e, c->Z, &n_max_real, c->isuppz,
+  if (real_mats) {
+    BLAS(syevr)("V", "A", "L", &n_max_real, w0->Xs, &n_max_real, &d_f, &d_f,
+                &d_i, &d_i, &abstol, &m, w0->e, w0->Z, &n_max_real, w0->isuppz,
                 &wkopt, &neg_one, &iwkopt, &neg_one, &info);
 
     if (info != 0) {
@@ -961,20 +1450,42 @@ static scs_int set_up_cone_work_spaces(ScsConeWork *c, const ScsCone *k) {
     liwork_max = MAX(liwork_max, iwkopt);
   }
 
+#ifdef USE_SPECTRAL_CONES
+  /* 1b. Spectral Workspace Query (syev)
+   *
+   * The logdet and sum-of-largest projections eigendecompose with syev, not
+   * syevr, but share the consolidated 'work' array sized above. Sizing that
+   * array from the syevr query alone shortchanges syev: both LAPACKs we
+   * measured (Apple Accelerate and netlib) report an optimum of 34n for
+   * syev against 33n for syevr, so every spectral syev call was running
+   * below its optimum. That stays above syev's *minimum* of 3n-1, so it
+   * costs block size rather than correctness, but a vendor whose optimum
+   * and minimum are closer together would push it under the minimum and
+   * syev would start failing with info = -8 deep inside a projection.
+   * Query syev too and keep whichever workspace is larger.
+   */
+  if (k->dsize > 0 || k->sl_size > 0) {
+    blas_int n_max_spectral = MAX(n_max_logdet, n_max_sl);
+
+    BLAS(syev)("V", "L", &n_max_spectral, w0->Xs, &n_max_spectral, w0->e, &wkopt,
+               &neg_one, &info);
+
+    if (info != 0) {
+      scs_printf("FATAL: syev workspace query failure, info = %li\n",
+                 (long)info);
+      return -1;
+    }
+    lwork_max = MAX(lwork_max, (blas_int)(wkopt + 1));
+  }
+#endif
+
   /* 2. Complex PSD Workspace Query (heevr) */
   if (k->cssize > 0) {
-    c->cXs = (scs_complex_float *)scs_calloc(n_max_csd * n_max_csd,
-                                             sizeof(scs_complex_float));
-    c->cZ = (scs_complex_float *)scs_calloc(n_max_csd * n_max_csd,
-                                            sizeof(scs_complex_float));
-    if (!c->cXs || !c->cZ)
-      return -1;
-
     /* R package: zheev workspace query; rwork is not touched by a query */
-    BLASC(heev)("V", "L", &n_max_csd, SCS_BLAS_COMPLEX_CAST(c->cXs),
-                &n_max_csd, c->e, SCS_BLAS_COMPLEX_CAST(&lcwork_opt),
+    BLASC(heev)("V", "L", &n_max_csd, SCS_BLAS_COMPLEX_CAST(w0->cXs),
+                &n_max_csd, w0->e, SCS_BLAS_COMPLEX_CAST(&lcwork_opt),
                 &neg_one, &lrwork_opt, &info);
-    /* zheev needs rwork of length max(1, 3n - 2); it lives in c->work */
+    /* zheev needs rwork of length max(1, 3n - 2); it lives in w0->work */
     lrwork_opt = (scs_float)MAX(1, 3 * n_max_csd - 2);
 
     if (info != 0) {
@@ -983,11 +1494,7 @@ static scs_int set_up_cone_work_spaces(ScsConeWork *c, const ScsCone *k) {
       return -1;
     }
 
-    c->lcwork = (blas_int)(lcwork_opt[0]);
-    c->cwork =
-        (scs_complex_float *)scs_calloc(c->lcwork, sizeof(scs_complex_float));
-    if (!c->cwork)
-      return -1;
+    lcwork = (blas_int)(lcwork_opt[0]);
 
     /* heevr uses a real 'rwork' array. We alias this to the shared real 'work'
      * array */
@@ -1026,22 +1533,13 @@ static scs_int set_up_cone_work_spaces(ScsConeWork *c, const ScsCone *k) {
 #endif
 
   /* Final Consolidated Allocation
-   * c->work aliases 'work' for syevr and 'rwork' for heevr
+   * w0->work aliases 'work' for syevr and 'rwork' for heevr
    */
-  if (lwork_max > 0) {
-    c->lwork = lwork_max;
-    c->work = (scs_float *)scs_calloc(c->lwork, sizeof(scs_float));
-    if (!c->work)
-      return -1;
-  }
-  if (liwork_max > 0) {
-    c->liwork = liwork_max;
-    c->iwork = (blas_int *)scs_calloc(c->liwork, sizeof(blas_int));
-    if (!c->iwork)
-      return -1;
-  }
+  if (alloc_psd_work_arrays(w0, lwork_max, liwork_max, lcwork) < 0)
+    return -1;
 
-  return 0;
+  /* the other PSD threads */
+  return set_up_psd_thread_work(c, k);
 #else
   /* Non-LAPACK fallback check */
   if (k->ssize > 0 || k->cssize > 0) {
@@ -1097,7 +1595,7 @@ static scs_int set_up_ell1_cone_work_space(ScsConeWork *c, const ScsCone *k) {
  * of the cone makes any uniform factor in rho drop out, so the
  * historical scalar-per-block case reduces to the unscaled path. */
 static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
-                                       ScsConeWork *c,
+                                       ScsPsdWork *w,
                                        const scs_float *rho) {
   scs_int scaled = 0;
   if (n == 0)
@@ -1119,7 +1617,7 @@ static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
 
   /* Diagonal-congruence pre-scale (skip when the metric is uniform on
    * this block so the historical path stays bit-identical). */
-  if (rho && c->psd_gamma) {
+  if (rho) {
     scs_float wmin = rho[0], wmax = rho[0];
     for (i = 1; i < n; ++i) {
       scs_float wii = rho[i * n - ((i - 1) * i) / 2];
@@ -1130,13 +1628,13 @@ static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
       scs_int jj, ii;
       scaled = 1;
       for (i = 0; i < n; ++i) {
-        c->psd_gamma[i] = POWF(rho[i * n - ((i - 1) * i) / 2], -0.25);
+        w->gamma[i] = POWF(rho[i * n - ((i - 1) * i) / 2], -0.25);
       }
       for (jj = 0; jj < n; ++jj) {
-        scs_float gj = c->psd_gamma[jj];
+        scs_float gj = w->gamma[jj];
         scs_float *col = &(X[jj * n - ((jj - 1) * jj) / 2]);
         for (ii = jj; ii < n; ++ii) {
-          col[ii - jj] *= c->psd_gamma[ii] * gj;
+          col[ii - jj] *= w->gamma[ii] * gj;
         }
       }
     }
@@ -1144,29 +1642,32 @@ static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
 
   /* Copy lower triangular part to full matrix buffer Xs */
   for (i = 0; i < n; ++i) {
-    memcpy(&(c->Xs[i * (n + 1)]), &(X[i * n - ((i - 1) * i) / 2]),
+    memcpy(&(w->Xs[i * (n + 1)]), &(X[i * n - ((i - 1) * i) / 2]),
            (n - i) * sizeof(scs_float));
   }
 
   /* Scale diagonals by sqrt(2) */
-  BLAS(scal)(&nb, &sqrt2, c->Xs, &nb_p1);
+  BLAS(scal)(&nb, &sqrt2, w->Xs, &nb_p1);
 
   /* Solve Eigenproblem: Xs = Z * diag(e) * Z' */
-  BLAS(syevr)("V", "A", "L", &nb, c->Xs, &nb, &d_f, &d_f, &d_i, &d_i, &abstol,
-              &m, c->e, c->Z, &nb, c->isuppz, c->work, &c->lwork, c->iwork,
-              &c->liwork, &info);
+  BLAS(syevr)("V", "A", "L", &nb, w->Xs, &nb, &d_f, &d_f, &d_i, &d_i, &abstol,
+              &m, w->e, w->Z, &nb, w->isuppz, w->work, &w->lwork, w->iwork,
+              &w->liwork, &info);
+  /* info < 0: bad argument. info > 0: no convergence. Either way there is no
+   * eigendecomposition to project with, so fail (the caller reports it: this
+   * may run in a PSD thread, which must not print). */
   if (info != 0)
-    return (int)info;
+    return -1;
 
   /* Filter negative eigenvalues and scale eigenvectors */
   /* Note: e is in ascending order */
   for (i = 0; i < n; ++i) {
-    if (c->e[i] > 0) {
+    if (w->e[i] > 0) {
       if (first_idx == -1) {
         first_idx = i;
       }
-      sq_eig = SQRTF(c->e[i]);
-      BLAS(scal)(&nb, &sq_eig, &c->Z[i * n], &one_int);
+      sq_eig = SQRTF(w->e[i]);
+      BLAS(scal)(&nb, &sq_eig, &w->Z[i * n], &one_int);
     }
   }
   if (first_idx == -1) {
@@ -1176,15 +1677,15 @@ static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
   }
   /* Reconstruct Xs = Z * Z' */
   ncols_z = (blas_int)(n - first_idx);
-  BLAS(syrk)("Lower", "NoTrans", &nb, &ncols_z, &one, &c->Z[first_idx * n], &nb,
-             &zero, c->Xs, &nb);
+  BLAS(syrk)("Lower", "NoTrans", &nb, &ncols_z, &one, &w->Z[first_idx * n], &nb,
+             &zero, w->Xs, &nb);
 
   /* Rescale diagonals by 1/sqrt(2) */
-  BLAS(scal)(&nb, &sqrt2_inv, c->Xs, &nb_p1);
+  BLAS(scal)(&nb, &sqrt2_inv, w->Xs, &nb_p1);
 
   /* Extract lower triangular matrix back to X */
   for (i = 0; i < n; ++i) {
-    memcpy(&(X[i * n - ((i - 1) * i) / 2]), &(c->Xs[i * (n + 1)]),
+    memcpy(&(X[i * n - ((i - 1) * i) / 2]), &(w->Xs[i * (n + 1)]),
            (n - i) * sizeof(scs_float));
   }
 
@@ -1192,10 +1693,10 @@ static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
   if (scaled) {
     scs_int jj, ii;
     for (jj = 0; jj < n; ++jj) {
-      scs_float gj = c->psd_gamma[jj];
+      scs_float gj = w->gamma[jj];
       scs_float *col = &(X[jj * n - ((jj - 1) * jj) / 2]);
       for (ii = jj; ii < n; ++ii) {
-        col[ii - jj] /= c->psd_gamma[ii] * gj;
+        col[ii - jj] /= w->gamma[ii] * gj;
       }
     }
   }
@@ -1209,7 +1710,7 @@ static scs_int proj_semi_definite_cone(scs_float *X, const scs_int n,
  * Projection: Complex Semi-Definite Cone
  */
 static scs_int proj_complex_semi_definite_cone(scs_float *X, const scs_int n,
-                                               ScsConeWork *c) {
+                                               ScsPsdWork *w) {
   if (n == 0)
     return 0;
   if (n == 1) {
@@ -1233,38 +1734,39 @@ static scs_int proj_complex_semi_definite_cone(scs_float *X, const scs_int n,
 
   /* Unpack X (real array) into cXs (complex matrix) */
   for (i = 0; i < n - 1; ++i) {
-    c->cXs[i * (n + 1)][0] = X[i * (2 * n - i)]; /* Diagonal (Real) */
-    c->cXs[i * (n + 1)][1] = 0.0;
-    memcpy(&(c->cXs[i * (n + 1) + 1]), &(X[i * (2 * n - i) + 1]),
+    w->cXs[i * (n + 1)][0] = X[i * (2 * n - i)]; /* Diagonal (Real) */
+    w->cXs[i * (n + 1)][1] = 0.0;
+    memcpy(&(w->cXs[i * (n + 1) + 1]), &(X[i * (2 * n - i) + 1]),
            2 * (n - i - 1) * sizeof(scs_float));
   }
-  c->cXs[n * n - 1][0] = X[n * n - 1]; /* Last element */
-  c->cXs[n * n - 1][1] = 0.0;
+  w->cXs[n * n - 1][0] = X[n * n - 1]; /* Last element */
+  w->cXs[n * n - 1][1] = 0.0;
 
   /* Scale diagonals by sqrt*/
   BLASC(scal)(&nb, SCS_BLAS_COMPLEX_CAST(&csqrt2),
-              SCS_BLAS_COMPLEX_CAST(c->cXs), &nb_p1);
+              SCS_BLAS_COMPLEX_CAST(w->cXs), &nb_p1);
 
-  /* Solve Eigenproblem. Note: c->work acts as rwork here. */
+  /* Solve Eigenproblem. Note: w->work acts as rwork here. */
   /* R package: zheev (R's LAPACK has no zheevr). The eigenvectors come
    * back in cXs; copy them to cZ where the reconstruction expects them. */
   (void)d_f; (void)d_i; (void)abstol; (void)m;
-  BLASC(heev)("V", "L", &nb, SCS_BLAS_COMPLEX_CAST(c->cXs), &nb, c->e,
-              SCS_BLAS_COMPLEX_CAST(c->cwork), &c->lcwork, c->work, &info);
+  BLASC(heev)("V", "L", &nb, SCS_BLAS_COMPLEX_CAST(w->cXs), &nb, w->e,
+              SCS_BLAS_COMPLEX_CAST(w->cwork), &w->lcwork, w->work, &info);
   if (info == 0)
-    memcpy(c->cZ, c->cXs, (size_t)n * (size_t)n * sizeof(scs_complex_float));
+    memcpy(w->cZ, w->cXs, (size_t)n * (size_t)n * sizeof(scs_complex_float));
+  /* info != 0: no eigendecomposition, so fail (see the real case) */
   if (info != 0)
-    return (int)info;
+    return -1;
 
   /* Reconstruct */
   for (i = 0; i < n; ++i) {
-    if (c->e[i] > 0) {
+    if (w->e[i] > 0) {
       if (first_idx == -1) {
         first_idx = i;
       }
-      csq_eig[0] = SQRTF(c->e[i]);
+      csq_eig[0] = SQRTF(w->e[i]);
       BLASC(scal)(&nb, SCS_BLAS_COMPLEX_CAST(&csq_eig),
-                  SCS_BLAS_COMPLEX_CAST(&c->cZ[i * n]), &one_int);
+                  SCS_BLAS_COMPLEX_CAST(&w->cZ[i * n]), &one_int);
     }
   }
   if (first_idx == -1) {
@@ -1276,20 +1778,20 @@ static scs_int proj_complex_semi_definite_cone(scs_float *X, const scs_int n,
   /* cXs = cZ * cZ' */
   ncols_z = (blas_int)(n - first_idx);
   BLASC(herk)("Lower", "NoTrans", &nb, &ncols_z, &one,
-              SCS_BLAS_COMPLEX_CAST(&c->cZ[first_idx * n]), &nb, &zero,
-              SCS_BLAS_COMPLEX_CAST(c->cXs), &nb);
+              SCS_BLAS_COMPLEX_CAST(&w->cZ[first_idx * n]), &nb, &zero,
+              SCS_BLAS_COMPLEX_CAST(w->cXs), &nb);
 
   /* Rescale diagonals */
   BLASC(scal)(&nb, SCS_BLAS_COMPLEX_CAST(&csqrt2_inv),
-              SCS_BLAS_COMPLEX_CAST(c->cXs), &nb_p1);
+              SCS_BLAS_COMPLEX_CAST(w->cXs), &nb_p1);
 
   /* Repack into X */
   for (i = 0; i < n - 1; ++i) {
-    X[i * (2 * n - i)] = c->cXs[i * (n + 1)][0];
-    memcpy(&(X[i * (2 * n - i) + 1]), &(c->cXs[i * (n + 1) + 1]),
+    X[i * (2 * n - i)] = w->cXs[i * (n + 1)][0];
+    memcpy(&(X[i * (2 * n - i) + 1]), &(w->cXs[i * (n + 1) + 1]),
            2 * (n - i - 1) * sizeof(scs_float));
   }
-  X[n * n - 1] = c->cXs[n * n - 1][0];
+  X[n * n - 1] = w->cXs[n * n - 1][0];
   return 0;
 #else
   return -1;
@@ -1369,7 +1871,7 @@ static scs_float proj_box_cone(scs_float *tx, const scs_float *bl,
      * should) if ht is very large, which can happen with some pathological
      * problems.
      */
-    if (ABS(gt / MAX(ht, 1e-6)) < 1e-12 * MAX(t, 1.) ||
+    if (ABS(gt / MAX(ht, (scs_float)1e-6)) < 1e-12 * MAX(t, 1.) ||
         ABS(t - t_prev) < 1e-11 * MAX(t, 1.))
       break;
   }
@@ -1424,18 +1926,37 @@ static void proj_soc(scs_float *x, scs_int q) {
  */
 static scs_float pow_calc_x(scs_float r, scs_float xh, scs_float rh,
                             scs_float a) {
-  scs_float x = 0.5 * (xh + SQRTF(xh * xh + 4 * a * (rh - r) * r));
-  return MAX(x, 1e-12);
+  /* Positive root of x^2 - xh * x - a * (rh - r) * r = 0, in a form that
+   * avoids cancellation when xh < 0. */
+  scs_float d = 4 * a * (rh - r) * r, s = SQRTF(xh * xh + d);
+  return xh >= 0 ? 0.5 * (xh + s) : 0.5 * d / (s - xh);
 }
 
 static void proj_power_cone(scs_float *v, scs_float a) {
   scs_float xh = v[0], yh = v[1], rh = ABS(v[2]);
-  scs_float x = 0.0, y = 0.0, r;
-  scs_int i;
+  scs_float x = 0.0, y = 0.0, r, lo, hi;
+  scs_float f_lo, f_hi; /* f at the bracket ends, for regula falsi */
+  scs_float phi0; /* phi(0) = phi(rh) = max(xh, 0)^a * max(yh, 0)^(1-a) */
+  /* Projection onto a cone is positively homogeneous, so work on v scaled
+   * to unit inf-norm; this makes the tolerances below relative to |v|. */
+  scs_float nrm = MAX(MAX(ABS(xh), ABS(yh)), rh);
+  scs_int i, side = 0;
+
+  if (nrm <= 0)
+    return;
+  xh /= nrm;
+  yh /= nrm;
+  rh /= nrm;
+
+  if (xh >= 0 && yh >= 0)
+    phi0 = POWF(xh, a) * POWF(yh, (1 - a));
+  else if (a > 0 && a < 1)
+    phi0 = 0;
+  else
+    phi0 = POWF(MAX(xh, 0), a) * POWF(MAX(yh, 0), (1 - a));
 
   /* Check v membership in K_a */
-  if (xh >= 0 && yh >= 0 &&
-      POW_CONE_TOL + POWF(xh, a) * POWF(yh, (1 - a)) >= rh)
+  if (xh >= 0 && yh >= 0 && POW_CONE_TOL + phi0 >= rh)
     return;
 
   /* Check -v membership in Polar K_a^* */
@@ -1446,9 +1967,41 @@ static void proj_power_cone(scs_float *v, scs_float a) {
     return;
   }
 
+  /* Find the root r in (0, rh) of f(r) = x(r)^a * y(r)^(1-a) - r. The first
+   * term is concave in r, so f > 0 left of the root and f < 0 right of it,
+   * which gives a bracket [lo, hi] that safeguards the Newton steps. f_lo
+   * and f_hi are f at the bracket ends, f(0) = phi(0) and f(rh) = phi(rh) - rh
+   * to start, for the regula falsi fallback. */
+  lo = 0;
+  hi = rh;
+  f_lo = phi0;
+  f_hi = phi0 - rh;
   r = rh / 2;
+  /* With exactly one negative component, for small r x(r) ~ a * rh * r / |xh|
+   * (or the same for y), and phi(r) = r then gives the root directly. This is
+   * the common case for ADMM iterates, and its root is often tiny, which
+   * Newton from rh / 2 reaches only slowly. */
+  if (xh < 0 && yh > 0) {
+    scs_float r0 = POWF(a * rh / (-xh), a / (1 - a)) * yh;
+    if (r0 > 0 && r0 < rh / 2)
+      r = r0;
+  } else if (yh < 0 && xh > 0) {
+    scs_float r0 = POWF((1 - a) * rh / (-yh), (1 - a) / a) * xh;
+    if (r0 > 0 && r0 < rh / 2)
+      r = r0;
+  }
+  /* Points just outside the cone (e.g. converging iterates) have their root
+   * near rh; starting there avoids Newton overshooting from the left into
+   * bisection. Only do this when the point is close to the cone,
+   * phi(rh) >= rh / 2, and the slopes dx/dr = -a * rh / xh and
+   * dy/dr = -(1 - a) * rh / yh at rh are moderate: otherwise the first step
+   * is too small to represent and looks converged. */
+  if (xh > 0 && yh > 0 && phi0 >= rh / 2 &&
+      a * rh <= POW_CONE_START_SLOPE * xh &&
+      (1 - a) * rh <= POW_CONE_START_SLOPE * yh)
+    r = rh;
   for (i = 0; i < POW_CONE_MAX_ITERS; ++i) {
-    scs_float f, fp, dxdr, dydr, xa, y1a;
+    scs_float f, fp, dxdr, dydr, xa, y1a, r_new, r_g, sens;
     x = pow_calc_x(r, xh, rh, a);
     y = pow_calc_x(r, yh, rh, 1 - a);
 
@@ -1457,19 +2010,130 @@ static void proj_power_cone(scs_float *v, scs_float a) {
     xa  = POWF(x, a);
     y1a = POWF(y, (1 - a));
     f = xa * y1a - r;
-    if (ABS(f) < POW_CONE_TOL)
-      break;
+    /* Illinois: halve the f value kept at an end that was not just moved
+     * twice in a row, so regula falsi does not stagnate. */
+    if (f > 0) {
+      lo = r;
+      f_lo = f;
+      if (side > 0)
+        f_hi *= 0.5;
+      side = 1;
+    } else {
+      hi = r;
+      f_hi = f;
+      if (side < 0)
+        f_lo *= 0.5;
+      side = -1;
+    }
 
     dxdr = a * (rh - 2 * r) / (2 * x - xh);
     dydr = (1 - a) * (rh - 2 * r) / (2 * y - yh);
     fp = xa * y1a * (a * dxdr / x + (1 - a) * dydr / y) - 1;
 
-    r = MAX(r - f / fp, 0);
-    r = MIN(r, rh);
+    r_new = r - f / fp;
+    if (f < 0) {
+      /* Near the polar boundary f is nearly flat around a double root and
+       * Newton on f converges only linearly; Newton on f(r) / r, which
+       * removes the trivial root at 0, converges much faster there. It is
+       * also taken elsewhere: restricting it saved a few projection
+       * evaluations on some inputs but made whole solves worse. */
+      r_g = r - r * f / (r * fp - f);
+      if (r_g > lo && r_g < hi)
+        r_new = r_g;
+    }
+    /* Stop when the step is small relative to r and moves x, y and r by at
+     * most POW_CONE_TOL (relative to |v| after normalization). Stop on the
+     * step rather than on |f|: a small |f| does not imply r is accurate when
+     * f is flat, and near the apex x can be far more sensitive to r than r
+     * is. r is an end of the bracket here, so a converged step may land
+     * exactly on it. The relative test cannot be met when the root is at or
+     * near 0, so also stop once the bracket is that narrow, or when it cannot
+     * shrink any further in the working precision. */
+    sens = MAX(1, MAX(ABS(dxdr), ABS(dydr)));
+    if (ABS(r_new - r) <= POW_CONE_TOL * r &&
+        ABS(r_new - r) * sens <= POW_CONE_TOL && r_new >= lo && r_new <= hi)
+      break;
+    /* If the Newton step leaves the bracket (from the left of a concave f it
+     * overshoots), fall back to regula falsi, then to bisection, which also
+     * catches NaN. Bisection alone is very slow when the root is within a few
+     * ulps of rh, e.g. a point just outside the cone with a tiny component. */
+    if (!(r_new > lo && r_new < hi))
+      r_new = (lo * f_hi - hi * f_lo) / (f_hi - f_lo);
+    if (!(r_new > lo && r_new < hi))
+      r_new = 0.5 * (lo + hi);
+    if ((hi - lo) * sens <= POW_CONE_TOL || hi - lo <= 4 * POW_CONE_EPS * hi)
+      break;
+    r = r_new;
   }
-  v[0] = x;
-  v[1] = y;
-  v[2] = (v[2] < 0) ? -r : r;
+  v[0] = x * nrm;
+  v[1] = y * nrm;
+  v[2] = ((v[2] < 0) ? -r : r) * nrm;
+}
+
+/* ===================== PSD Blocks, all Threads ======================== */
+
+/* Project the blocks of lists t, t + dt, t + 2 dt, ..., each list with its own
+ * workspace: all of them in order for t = 0 and dt = 1, the share of thread t
+ * in a team of dt otherwise. x and rho as in proj_psd_cones. */
+static scs_int proj_psd_lists(scs_float *x, ScsConeWork *c,
+                              const scs_float *rho, scs_int t, scs_int dt) {
+  const ScsCone *k = c->k;
+  scs_int j, b, st, status = 0;
+  for (; t < c->psd_nthreads; t += dt) {
+    ScsPsdWork *w = SCS_NULL; /* no workspace without LAPACK */
+#ifdef USE_LAPACK
+    w = &(c->psd_tw[t]);
+#endif
+    for (j = c->psd_tptr[t]; j < c->psd_tptr[t + 1]; ++j) {
+      b = c->psd_blk[j];
+      if (b < k->ssize) {
+        st = proj_semi_definite_cone(&(x[c->psd_off[b]]), k->s[b], w,
+                                     rho ? &(rho[c->psd_off[b]]) : SCS_NULL);
+      } else {
+        st = proj_complex_semi_definite_cone(&(x[c->psd_off[b]]),
+                                             k->cs[b - k->ssize], w);
+      }
+      if (st < 0)
+        status = st;
+    }
+  }
+  return status;
+}
+
+/* Project the PSD blocks x (from the first PSD entry); rho is the matching
+ * part of r_y or NULL. */
+static scs_int proj_psd_cones(scs_float *x, ScsConeWork *c,
+                              const scs_float *rho) {
+#ifdef PSD_PARALLEL
+  /* the threads of the split, or fewer if the OpenMP thread count has been
+   * lowered since setup */
+  int nt = omp_get_max_threads();
+  if ((scs_int)nt > c->psd_nthreads)
+    nt = (int)c->psd_nthreads;
+  if (nt > 1) {
+    scs_int status = 0;
+#pragma omp parallel num_threads(nt)
+    {
+      /* thread t of a team of dt, which may be smaller than asked for (e.g.
+       * nested), projects lists t, t + dt, ...: every list is covered. The
+       * BLAS has to run on one thread in here (see the comment on the option
+       * above). SCS can only see to that for MKL: one MKL thread meanwhile,
+       * then back to the setting before. */
+      int mkl_nt = mkl_set_local_threads(1);
+      scs_int st = proj_psd_lists(x, c, rho, omp_get_thread_num(),
+                                  omp_get_num_threads());
+      mkl_set_local_threads(mkl_nt);
+      if (st < 0) {
+#pragma omp critical(scs_psd_status)
+        status = st;
+      }
+    }
+    return status;
+  }
+#endif
+  /* no parallel region: the BLAS is free to use its own threads, as in a
+   * build without USE_PARALLEL_PSD */
+  return proj_psd_lists(x, c, rho, 0, 1);
 }
 
 /* ================ Main Cone Projection Dispatch ====================== */
@@ -1517,32 +2181,19 @@ static scs_int proj_cone(scs_float *x, const ScsCone *k, ScsConeWork *c,
     }
   }
 
-  /* 5. PSD Cone */
-  if (k->ssize) {
-    for (i = 0; i < k->ssize; ++i) {
+  /* 5-6. PSD and Complex PSD Cones */
+  if (c->psd_nthreads > 0) {
 #ifdef USE_SPECTRAL_CONES
-      SPECTRAL_TIMING(SCS(tic)(&spec_mat_proj_timer);)
+    SPECTRAL_TIMING(SCS(tic)(&spec_mat_proj_timer);)
 #endif
-      status = proj_semi_definite_cone(&(x[count]), k->s[i], c,
-                                       r_y ? &(r_y[count]) : SCS_NULL);
+    status = proj_psd_cones(&(x[count]), c, r_y ? &(r_y[count]) : SCS_NULL);
 #ifdef USE_SPECTRAL_CONES
-      SPECTRAL_TIMING(c->tot_time_mat_cone_proj +=
-                      SCS(tocq)(&spec_mat_proj_timer);)
+    SPECTRAL_TIMING(c->tot_time_mat_cone_proj +=
+                    SCS(tocq)(&spec_mat_proj_timer);)
 #endif
-      if (status < 0)
-        return status;
-      count += get_sd_cone_size(k->s[i]);
-    }
-  }
-
-  /* 6. Complex PSD Cone */
-  if (k->cssize) {
-    for (i = 0; i < k->cssize; ++i) {
-      status = proj_complex_semi_definite_cone(&(x[count]), k->cs[i], c);
-      if (status < 0)
-        return status;
-      count += get_csd_cone_size(k->cs[i]);
-    }
+    if (status < 0)
+      return status;
+    count += c->psd_len;
   }
 
   if (k->ep || k->ed) { /* doesn't use r_y */
@@ -1655,6 +2306,14 @@ ScsConeWork *SCS(init_cone)(ScsCone *k, scs_int m) {
         (scs_float *)scs_calloc(k->bsize - 1, sizeof(scs_float));
   }
 
+  /* PSD blocks: offsets and threads (the workspaces are set up below) */
+  if ((k->ssize && k->s) || (k->cssize && k->cs)) {
+    if (set_up_psd_schedule(c, k) < 0) {
+      SCS(finish_cone)(c);
+      return SCS_NULL;
+    }
+  }
+
   /* Set up workspaces if matrix cones are present */
   if ((k->ssize && k->s) || (k->cssize && k->cs)
 #ifdef USE_SPECTRAL_CONES
@@ -1666,7 +2325,6 @@ ScsConeWork *SCS(init_cone)(ScsCone *k, scs_int m) {
       return SCS_NULL;
     }
   }
-
 #ifdef USE_SPECTRAL_CONES
   if (k->ell1_size > 0 && k->ell1) {
     if (set_up_ell1_cone_work_space(c, k) < 0) {
@@ -1677,6 +2335,36 @@ ScsConeWork *SCS(init_cone)(ScsCone *k, scs_int m) {
 #endif
 
   return c;
+}
+
+/* Discard inner-solver state that was cached under a previous metric.
+ *
+ * The standard cones project in closed form, so their projections are a
+ * function of the point and the current metric alone. The spectral cones
+ * are not: proj_logdet_cone runs a Newton/IPM inner solve and warm-starts
+ * Newton from the projection it produced on the previous outer iteration.
+ * That saved iterate belongs to the metric that produced it -- once diag_r
+ * changes, the point being projected jumps, and the stale iterate is no
+ * longer a good (nor necessarily a domain-interior) starting point. So
+ * callers must invalidate it whenever the metric changes, and whenever a
+ * new solve begins.
+ *
+ * Clearing the flags is a complete invalidation: saved_log_projs is read
+ * only where the matching flag is set, log_cone_Newton writes every
+ * component of its output on the cold path, and the IPM fallback always
+ * starts from the all-ones point, so it carries nothing across iterations.
+ *
+ * Dropping a warm start only costs inner iterations, never correctness,
+ * which is why this is safe to call unconditionally.
+ */
+void SCS(reset_cone_cache)(ScsConeWork *c) {
+#ifdef USE_SPECTRAL_CONES
+  if (c && c->k && c->log_cone_warmstarts && c->k->dsize > 0) {
+    memset(c->log_cone_warmstarts, 0, c->k->dsize * sizeof(bool));
+  }
+#else
+  (void)c;
+#endif
 }
 
 /* Outward facing cone projection routine, performs projection in-place.

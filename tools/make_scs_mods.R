@@ -109,18 +109,18 @@ cones <- edit_fixed(
 cones <- edit_fixed(
   cones,
   from = paste(
-    '    BLASC(heevr)("V", "A", "L", &n_max_csd, SCS_BLAS_COMPLEX_CAST(c->cXs),',
-    '                 &n_max_csd, &d_f, &d_f, &d_i, &d_i, &abstol, &m, c->e,',
-    '                 SCS_BLAS_COMPLEX_CAST(c->cZ), &n_max_csd, c->isuppz,',
+    '    BLASC(heevr)("V", "A", "L", &n_max_csd, SCS_BLAS_COMPLEX_CAST(w0->cXs),',
+    '                 &n_max_csd, &d_f, &d_f, &d_i, &d_i, &abstol, &m, w0->e,',
+    '                 SCS_BLAS_COMPLEX_CAST(w0->cZ), &n_max_csd, w0->isuppz,',
     '                 SCS_BLAS_COMPLEX_CAST(&lcwork_opt), &neg_one, &lrwork_opt,',
     '                 &neg_one, &liwork_opt_c, &neg_one, &info);',
     sep = "\n"),
   to = paste(
     '    /* R package: zheev workspace query; rwork is not touched by a query */',
-    '    BLASC(heev)("V", "L", &n_max_csd, SCS_BLAS_COMPLEX_CAST(c->cXs),',
-    '                &n_max_csd, c->e, SCS_BLAS_COMPLEX_CAST(&lcwork_opt),',
+    '    BLASC(heev)("V", "L", &n_max_csd, SCS_BLAS_COMPLEX_CAST(w0->cXs),',
+    '                &n_max_csd, w0->e, SCS_BLAS_COMPLEX_CAST(&lcwork_opt),',
     '                &neg_one, &lrwork_opt, &info);',
-    '    /* zheev needs rwork of length max(1, 3n - 2); it lives in c->work */',
+    '    /* zheev needs rwork of length max(1, 3n - 2); it lives in w0->work */',
     '    lrwork_opt = (scs_float)MAX(1, 3 * n_max_csd - 2);',
     sep = "\n"),
   expect = 1L, label = "M3b", file = "cones.c"
@@ -128,20 +128,20 @@ cones <- edit_fixed(
 cones <- edit_fixed(
   cones,
   from = paste(
-    '  BLASC(heevr)("V", "A", "L", &nb, SCS_BLAS_COMPLEX_CAST(c->cXs), &nb, &d_f,',
-    '               &d_f, &d_i, &d_i, &abstol, &m, c->e,',
-    '               SCS_BLAS_COMPLEX_CAST(c->cZ), &nb, c->isuppz,',
-    '               SCS_BLAS_COMPLEX_CAST(c->cwork), &c->lcwork, c->work, &c->lwork,',
-    '               c->iwork, &c->liwork, &info);',
+    '  BLASC(heevr)("V", "A", "L", &nb, SCS_BLAS_COMPLEX_CAST(w->cXs), &nb, &d_f,',
+    '               &d_f, &d_i, &d_i, &abstol, &m, w->e,',
+    '               SCS_BLAS_COMPLEX_CAST(w->cZ), &nb, w->isuppz,',
+    '               SCS_BLAS_COMPLEX_CAST(w->cwork), &w->lcwork, w->work, &w->lwork,',
+    '               w->iwork, &w->liwork, &info);',
     sep = "\n"),
   to = paste(
     '  /* R package: zheev (R\'s LAPACK has no zheevr). The eigenvectors come',
     '   * back in cXs; copy them to cZ where the reconstruction expects them. */',
     '  (void)d_f; (void)d_i; (void)abstol; (void)m;',
-    '  BLASC(heev)("V", "L", &nb, SCS_BLAS_COMPLEX_CAST(c->cXs), &nb, c->e,',
-    '              SCS_BLAS_COMPLEX_CAST(c->cwork), &c->lcwork, c->work, &info);',
+    '  BLASC(heev)("V", "L", &nb, SCS_BLAS_COMPLEX_CAST(w->cXs), &nb, w->e,',
+    '              SCS_BLAS_COMPLEX_CAST(w->cwork), &w->lcwork, w->work, &info);',
     '  if (info == 0)',
-    '    memcpy(c->cZ, c->cXs, (size_t)n * (size_t)n * sizeof(scs_complex_float));',
+    '    memcpy(w->cZ, w->cXs, (size_t)n * (size_t)n * sizeof(scs_complex_float));',
     sep = "\n"),
   expect = 1L, label = "M3c", file = "cones.c"
 )

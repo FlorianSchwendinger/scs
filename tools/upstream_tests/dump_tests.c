@@ -184,7 +184,10 @@ static void dump_gen_random_prob_data(scs_int nnz, scs_int col_nnz, ScsData *d, 
 #define scs_solve(w, sol, info, ws) dump_scs_solve(w, sol, info, ws)
 
 /* upstream test headers (spectral-cone, read/write, scs_update and internal
- * function tests are left out: not reachable through the R API) */
+ * function tests are left out: not reachable through the R API; so are the
+ * parallel PSD tests of test_psd_parallel.h, which need OpenMP and
+ * USE_PARALLEL_PSD and are skipped upstream in a build without them, like
+ * this package's) */
 #include "problems/complex_PSD.h"
 #include "problems/degenerate.h"
 #include "problems/dense_qp.h"
@@ -192,6 +195,9 @@ static void dump_gen_random_prob_data(scs_int nnz, scs_int col_nnz, ScsData *d, 
 #include "problems/infeasible_lp.h"
 #include "problems/infeasible_socp.h"
 #include "problems/infeasible_tiny_qp.h"
+#include "problems/issue_140.h"
+#include "problems/issue_220.h"
+#include "problems/issue_499.h"
 #include "problems/max_ent.h"
 #include "problems/mpc_bug.h"
 #include "problems/qafiro_tiny_qp.h"
@@ -205,9 +211,11 @@ static void dump_gen_random_prob_data(scs_int nnz, scs_int col_nnz, ScsData *d, 
 #include "problems/test_exp_cone.h"
 #include "problems/test_inaccurate.h"
 #include "problems/test_mixed_cones.h"
+#include "problems/test_non_psd_p.h"
 #include "problems/test_power_cone.h"
 #include "problems/test_psd_metric.h"
 #include "problems/test_psd_n1.h"
+#include "problems/test_psd_scale_updates.h"
 #include "problems/test_soc_sizes.h"
 #include "problems/test_solver_options.h"
 #include "problems/test_validation.h"
@@ -216,6 +224,14 @@ static void dump_gen_random_prob_data(scs_int nnz, scs_int col_nnz, ScsData *d, 
 #include "problems/unbounded_socp.h"
 #include "problems/unbounded_tiny_qp.h"
 
+/* declared by minunit.h since 3.3.2 and defined by upstream's runner: a test
+ * returns mu_skipped when a build flag compiles it out */
+int tests_failed = 0;
+int tests_skipped = 0;
+const char *failed_tests[MU_MAX_FAILED_TESTS];
+const char *skipped_tests[MU_MAX_FAILED_TESTS];
+const char *const mu_skipped = "skipped";
+
 #define RUN(t)                                                        \
   do {                                                                \
     const char *msg;                                                  \
@@ -223,7 +239,8 @@ static void dump_gen_random_prob_data(scs_int nnz, scs_int col_nnz, ScsData *d, 
     printf("******** %s\n", #t);                                      \
     msg = t();                                                        \
     tests_run++;                                                      \
-    fprintf(manifest, "%s\t%d\t%s\n", #t, case_no, msg ? msg : "PASS"); \
+    if (msg == mu_skipped) { tests_skipped++; msg = NULL; fprintf(manifest, "%s\t%d\tSKIPPED\n", #t, case_no); } \
+    else fprintf(manifest, "%s\t%d\t%s\n", #t, case_no, msg ? msg : "PASS"); \
     if (msg) { printf("UPSTREAM ASSERTION FAILED in %s: %s\n", #t, msg); failures++; } \
   } while (0)
 
@@ -245,6 +262,7 @@ SEXP dump_tests_run(SEXP outdir) {
   RUN(complex_PSD);
   RUN(sd_and_complex_sd);
   RUN(test_psd_metric);
+  RUN(test_psd_scale_updates);
   RUN(hs21_tiny_qp);
   RUN(qafiro_tiny_qp);
   RUN(infeasible_tiny_qp);
@@ -256,6 +274,9 @@ SEXP dump_tests_run(SEXP outdir) {
   RUN(random_prob);
   RUN(max_ent);
   RUN(mpc_bug);
+  RUN(issue_140);
+  RUN(issue_220);
+  RUN(issue_499);
   RUN(test_exp_cone);
   RUN(test_dual_exp_cone);
   RUN(test_power_cone);
@@ -263,6 +284,10 @@ SEXP dump_tests_run(SEXP outdir) {
   RUN(test_dual_power_cone);
   RUN(test_multi_power);
   RUN(test_power_cone_infeasible);
+  RUN(test_power_cone_small_scale);
+  /* like test_psd_metric, internal functions only: checks this build of the
+   * library and records no solve */
+  RUN(test_power_cone_proj_tiny_component);
   RUN(test_soc_size1);
   RUN(test_soc_size2);
   RUN(test_soc_size3);
@@ -287,6 +312,7 @@ SEXP dump_tests_run(SEXP outdir) {
   RUN(test_normalize_off);
   RUN(test_warm_start);
   RUN(test_mixed_cones);
+  RUN(test_non_psd_p);
   fclose(manifest);
   manifest = NULL;
   planted_clear();
