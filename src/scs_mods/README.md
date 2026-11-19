@@ -1,7 +1,7 @@
 ## Summary of modifications
 
-These modifications are against [scs 3.3.1](https://github.com/cvxgrp/scs/tree/3.3.1)
-(commit `cc244ebc`), the tag `src/scs` points to. `src/Makevars` and
+These modifications are against [scs 3.3.2](https://github.com/cvxgrp/scs/tree/3.3.2)
+(commit `f0036c3a`), the tag `src/scs` points to. `src/Makevars` and
 `src/Makevars.win` copy the files in this directory over the upstream tree
 before `libscsdir.a` is built; the submodule itself is never committed in
 modified form. `tools/make_scs_mods.R` regenerates both files from the pristine

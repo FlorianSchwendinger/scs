@@ -33,6 +33,9 @@ Design points worth keeping:
   reused workspace (SCS keeps the Anderson acceleration memory and the
   row scaling between `scs_solve()` calls), validation cases that corrupt
   the matrix dimensions or leave the settings unset, and the upstream
-  tests for `scs_update`, file I/O, the spectral cones, and the internal
-  helper functions. The list of tests run is the `RUN(...)` block at the
-  end of `dump_tests.c`.
+  tests for `scs_update`, file I/O, the spectral cones, the parallel PSD
+  projection (it needs OpenMP, which this package's build does not use),
+  and the internal helper functions. Two tests of internal functions,
+  `test_psd_metric` and `test_power_cone_proj_tiny_component`, do run in
+  step 4 as checks of this build and record nothing. The list of tests
+  run is the `RUN(...)` block at the end of `dump_tests.c`.

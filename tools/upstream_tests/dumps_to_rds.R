@@ -1,4 +1,4 @@
-## Convert the dumps written by dump_tests (upstream SCS 3.3.1 test problems,
+## Convert the dumps written by dump_tests (upstream SCS 3.3.2 test problems,
 ## solved by the oracle library) into the RDS layout used by
 ## inst/tinytest/test_problems.R:
 ##   list(data = list(A, P, b, obj), cone, settings, initial?,
@@ -61,7 +61,7 @@ to_rds <- function(d) {
   ## the solution SCS returned is not stored: test_problems.R checks the
   ## replayed solution with upstream's assertions, not against a saved one
   res <- list(data = list(A = A, P = P, b = d$b, obj = d$c), cone = cone, settings = settings,
-              upstream = list(test = d$test, case = d$case, scs = "3.3.1", exitflag = d$exitflag))
+              upstream = list(test = d$test, case = d$case, scs = "3.3.2", exitflag = d$exitflag))
   ## c'x* and b'y* of the solution gen_random_prob_data() planted: upstream's
   ## objective check for generated problems (small_lp.h:37-38)
   if (length(d$planted) == 2L) res$upstream$planted <- c(cx = d$planted[1], by = d$planted[2])

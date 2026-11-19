@@ -1,3 +1,8 @@
+# scs 3.3.2
+
+- Synced up to version 3.3.2 of the SCS C library.
+- Test suite regenerated from the SCS 3.3.2 C tests (89 reference problems, 6 new).
+
 # scs 3.3.1
 
 - Synced up to version 3.3.1 of the SCS C library. The package version
